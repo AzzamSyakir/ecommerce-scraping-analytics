@@ -1,0 +1,15 @@
+FROM golang:bookworm
+
+# Set destination for COPY
+WORKDIR /app
+
+#copy source & Download Go modules
+COPY . .
+RUN go mod download
+
+#build and run code
+RUN go build -o /go-Etsy-trend-analytics
+
+EXPOSE 8080
+
+CMD [ "/go-Etsy-trend-analytics" ]
