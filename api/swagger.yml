@@ -1,0 +1,243 @@
+openapi: 3.0.0
+info:
+  title: API Analytics Trend E-commerce Etsy
+  version: 1.0.0
+  description: |
+    This API provides analytics and trend insights for products, categories, and prices on Etsy. It offers data on trending product categories, popular products, and price fluctuations. The API supports both general and specific queries, allowing you to retrieve insights based on a defined date range.
+    You can access the project's source code here: [GitHub - Etsy Trend Analytics](https://github.com/AzzamSyakir/Etsy-trend-analytics)
+
+servers:
+  - url: "https://api.example.com/v1"
+
+paths:
+  /categories/trend:
+    get:
+      tags:
+        - Category
+      summary: Get product category trend data
+      description: Retrieve data on the most popular product categories based on sales volume or demand growth.
+      responses:
+        "200":
+          description: Successfully retrieved category trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category_name:
+                          type: string
+                          example: "Handmade Jewelry"
+                        total_sales:
+                          type: integer
+                          example: 5000
+                        growth_percentage:
+                          type: number
+                          format: float
+                          example: 12.5
+  /products/trend:
+    get:
+      tags:
+        - Product
+      summary: Get product trend data
+      description: Displays products with the highest sales or increased demand over a specific period.
+      responses:
+        "200":
+          description: Successfully retrieved product trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_name:
+                          type: string
+                          example: "Handmade Silver Ring"
+                        total_sales:
+                          type: integer
+                          example: 1200
+                        growth_percentage:
+                          type: number
+                          format: float
+                          example: 8.3
+  /prices/trend:
+    get:
+      tags:
+        - Prices
+      summary: Get product price trend data
+      description: Track product price changes over a specific period.
+      responses:
+        "200":
+          description: Successfully retrieved price trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_name:
+                          type: string
+                          example: "Handmade Silver Ring"
+                        average_price:
+                          type: number
+                          format: float
+                          example: 37.00
+  /categories/trend/specific:
+    get:
+      tags:
+        - Category
+      summary: Get specific category trend data
+      description: Retrieve data on popular product categories with a defined date range.
+      parameters:
+        - in: query
+          name: start_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - in: query
+          name: end_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+      responses:
+        "200":
+          description: Successfully retrieved category trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category_name:
+                          type: string
+                          example: "Handmade Jewelry"
+                        total_sales:
+                          type: integer
+                          example: 5000
+                        growth_percentage:
+                          type: number
+                          format: float
+                          example: 12.5
+  /products/trend/specific:
+    get:
+      tags:
+        - Product
+      summary: Get specific product trend data
+      description: Displays products with the highest sales or increased demand within a specified period.
+      parameters:
+        - in: query
+          name: start_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - in: query
+          name: end_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+      responses:
+        "200":
+          description: Successfully retrieved product trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_name:
+                          type: string
+                          example: "Handmade Silver Ring"
+                        total_sales:
+                          type: integer
+                          example: 1200
+                        growth_percentage:
+                          type: number
+                          format: float
+                          example: 8.3
+  /prices/trend/specific:
+    get:
+      tags:
+        - Prices
+      summary: Get specific price trend data
+      description: Track product price changes within a defined date range.
+      parameters:
+        - in: query
+          name: start_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - in: query
+          name: end_date
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+      responses:
+        "200":
+          description: Successfully retrieved price trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_name:
+                          type: string
+                          example: "Handmade Silver Ring"
+                        average_price:
+                          type: number
+                          format: float
+                          example: 37.00
