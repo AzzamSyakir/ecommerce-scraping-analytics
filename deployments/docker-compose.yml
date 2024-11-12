@@ -3,6 +3,7 @@ services:
   db:
     image: postgres
     restart:  unless-stopped
+    container_name: app-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB} 
       POSTGRES_USER: ${POSTGRES_USER}
@@ -10,13 +11,28 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - ~/apps/postgres:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
 
   app:
     build: 
           context: ../
           dockerfile: deployments/dockerfile
+    container_name: app
     restart: unless-stopped
     command: go run main.go
     ports:
       - "8080:80"
+    volumes:
+      - ./:/app
+  rabbitmq:
+    image: rabbitmq:alpine
+    container_name: rabbitmq
+    ports:
+        - 5672:5672
+        - 15672:15672
+    volumes:
+        - rabbitmq-data:/var/lib/rabbitmq/
+  
+volumes:
+  db-data:
+  rabbitmq-data:
