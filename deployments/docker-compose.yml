@@ -1,11 +1,10 @@
 services:
-
   db:
     image: postgres
-    restart:  unless-stopped
+    restart: unless-stopped
     container_name: app-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB} 
+      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
@@ -14,25 +13,35 @@ services:
       - db-data:/var/lib/postgresql/data
 
   app:
-    build: 
-          context: ../
-          dockerfile: deployments/dockerfile
+    build:
+      context: ../
+      dockerfile: deployments/dockerfile
     container_name: app
     restart: unless-stopped
     command: go run main.go
     ports:
-      - "8080:80"
+      - "80:80"
     volumes:
       - ./:/app
+
   rabbitmq:
     image: rabbitmq:alpine
     container_name: rabbitmq
     ports:
-        - 5672:5672
-        - 15672:15672
+      - "5672:5672"
     volumes:
-        - rabbitmq-data:/var/lib/rabbitmq/
-  
+      - rabbitmq-data:/var/lib/rabbitmq/
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    environment:
+      SWAGGER_JSON: /oas/openapi.yml
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../api:/oas
+
 volumes:
   db-data:
   rabbitmq-data:
