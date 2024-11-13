@@ -11,7 +11,7 @@ services:
       - 5432:5432
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ../internal/sql/:/docker-entrypoint-initdb.d/
+      - ../internal/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   app:
     build:
@@ -25,23 +25,24 @@ services:
     volumes:
       - ./:/app
 
-  rabbitmq:
-    image: rabbitmq:alpine
+  rabbitmq-management:
+    image: rabbitmq:management-alpine
     container_name: rabbitmq
     ports:
-      - "5672:5672"
+        - "${RABBITMQ_PORT}:5672"
+        - "${RABBITMQ_MANAGEMENT_PORT}:15672"
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq/
+        - rabbitmq-data:/var/lib/rabbitmq/
 
   swagger-ui:
     image: swaggerapi/swagger-ui
     container_name: swagger-ui
     environment:
-      SWAGGER_JSON: /oas/openapi.yml
+      SWAGGER_JSON: /data/swagger.yml
     ports:
-      - "8080:8080"
+      - "${SWAGGER_PORT}:8080"
     volumes:
-      - ../api:/oas
+      - ../api:/data
 
 volumes:
   db-data:
