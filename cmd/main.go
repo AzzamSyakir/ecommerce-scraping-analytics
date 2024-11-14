@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ecrater-trend-analytics/internal/routes"
+	"etsy-trend-analytics/internal/routes"
 	"log"
 
 	"github.com/joho/godotenv"
