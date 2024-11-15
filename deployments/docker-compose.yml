@@ -13,19 +13,19 @@ services:
       - db-data:/var/lib/postgresql/data
       - ../internal/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  app:
-    build:
-      context: ../
-      dockerfile: deployments/dockerfile
-    container_name: app
-    restart: unless-stopped
-    command: go run main.go
-    ports:
-      - "80:80"
-    volumes:
-      - ./:/app
+  # app:
+  #   build:
+  #     context: ../
+  #     dockerfile: deployments/dockerfile
+  #   container_name: app
+  #   restart: unless-stopped
+  #   command: go run main.go
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./:/app
 
-  rabbitmq-management:
+  rabbitmq:
     image: rabbitmq:management-alpine
     container_name: rabbitmq
     ports:
@@ -33,6 +33,10 @@ services:
         - "${RABBITMQ_MANAGEMENT_PORT}:15672"
     volumes:
         - rabbitmq-data:/var/lib/rabbitmq/
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+
 
   swagger-ui:
     image: swaggerapi/swagger-ui
