@@ -1,3 +1,4 @@
 package scraping
 
-type ScrapingController struct{}
+type ScrapingController struct {
+}
