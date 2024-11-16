@@ -1,7 +1,7 @@
 package routes
 
 import (
-	controller "etsy-trend-analytics/internal/controller/main"
+	"etsy-trend-analytics/internal/controllers"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,17 +10,34 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Register(router *gin.Engine, c *controller.MainController) {
+type Route struct {
+	Router             *gin.Engine
+	LogicController    *controllers.LogicController
+	ScrapingController *controllers.ScrapingController
+	MainController     *controllers.MainController
+}
+
+func NewRoute(router *gin.Engine, logic *controllers.LogicController, scraping *controllers.ScrapingController, main *controllers.MainController) *Route {
+	route := &Route{
+		Router:             router,
+		LogicController:    logic,
+		ScrapingController: scraping,
+		MainController:     main,
+	}
+	return route
+}
+
+func Register(router *gin.Engine, c *controllers.MainController) {
 	categories := router.Group("/categories")
 	{
-		categories.GET("/trend", c.ProductCategoryTrends)
+		categories.GET("/trend", c.ProductCategoryTrendsMainController)
 	}
 
 }
-func RunServer() {
+func (route *Route) RunServer() {
 
 	router := gin.Default()
-	Register(router, &controller.MainController{})
+	Register(router, route.MainController)
 	server := &http.Server{
 		Addr:           fmt.Sprintf("%s:%s", os.Getenv("GATEWAY_APP_HOST"), os.Getenv("GATEWAY_APP_PORT")),
 		Handler:        router,

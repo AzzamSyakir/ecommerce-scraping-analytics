@@ -9,23 +9,41 @@ import (
 	"gorm.io/gorm"
 )
 
-func DatabaseConnection() (*gorm.DB, error) {
+type DatabaseConfig struct {
+	DB *GormDatabase
+}
+
+type GormDatabase struct {
+	Connection *gorm.DB
+}
+
+func NewDBConfig() *DatabaseConfig {
+	databaseConfig := &DatabaseConfig{
+		DB: NewDatabaseConnection(),
+	}
+	return databaseConfig
+}
+
+func NewDatabaseConnection() *GormDatabase {
 	var (
 		postgresHost     = os.Getenv("POSTGRES_HOST")
 		postgresPort     = os.Getenv("POSTGRES_PORT")
 		postgresUser     = os.Getenv("POSTGRES_USER")
-		postgresPassword = os.Getenv("POSTGRES_PORT")
+		postgresPassword = os.Getenv("POSTGRES_PASSWORD")
 		postgresDb       = os.Getenv("POSTGRES_DB")
 	)
 	postgresPortInt, err := strconv.Atoi(postgresPort)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", postgresHost, postgresPortInt, postgresUser, postgresPassword, postgresDb)
-
-	db, err := gorm.Open(postgres.Open(sqlInfo), &gorm.Config{})
+	connection, err := gorm.Open(postgres.Open(sqlInfo), &gorm.Config{})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return db, nil
+
+	Db := &GormDatabase{
+		Connection: connection,
+	}
+	return Db
 }

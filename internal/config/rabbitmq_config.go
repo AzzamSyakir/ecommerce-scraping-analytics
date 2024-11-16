@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/streadway/amqp"
@@ -12,20 +11,20 @@ type RabbitMqConfig struct {
 	Channel    *amqp.Channel
 }
 
-func NewRabbitMqConfig() (*RabbitMqConfig, error) {
+func NewRabbitMqConfig() *RabbitMqConfig {
 	connection, err := RabbitMQConnection()
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish RabbitMQ connection: %w", err)
+		panic("failed to establish RabbitMQ connection: " + err.Error())
 	}
 	channel, err := RabbitMqChannel(connection)
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish RabbitMQ channel: %w", err)
+		panic("failed to establish RabbitMQ channel: " + err.Error())
 	}
 	rabbitMqConfig := &RabbitMqConfig{
 		Connection: connection,
 		Channel:    channel,
 	}
-	return rabbitMqConfig, nil
+	return rabbitMqConfig
 }
 
 func RabbitMQConnection() (*amqp.Connection, error) {
@@ -45,37 +44,4 @@ func RabbitMqChannel(connection *amqp.Connection) (*amqp.Channel, error) {
 		return nil, err
 	}
 	return channelRabbitMQ, nil
-}
-
-func (*RabbitMqConfig) CreateMessage(channelRabbitMQ *amqp.Channel, msg string, queueName string) error {
-	message := amqp.Publishing{
-		ContentType: "text/plain",
-		Body:        []byte(msg),
-	}
-	if err := channelRabbitMQ.Publish(
-		"",        // exchange
-		queueName, // queue name
-		false,     // mandatory
-		false,     // immediate
-		message,   // message to publish
-	); err != nil {
-		return fmt.Errorf("failed to publish message to queue: %w", err)
-	}
-	return nil
-}
-
-func (*RabbitMqConfig) ConsumeMessage(channelRabbitMQ *amqp.Channel, msg any, queueName string) error {
-	_, err := channelRabbitMQ.Consume(
-		queueName, // queue name
-		"",        // consumer
-		true,      // auto-ack
-		false,     // exclusive
-		false,     // no local
-		false,     // no wait
-		nil,       // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to publish message to queue: %w", err)
-	}
-	return nil
 }

@@ -1,17 +1,12 @@
 package main
 
 import (
-	"etsy-trend-analytics/internal/routes"
-	"log"
-
-	"github.com/joho/godotenv"
+	"etsy-trend-analytics/internal/container"
+	"fmt"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	routes.RunServer()
+	fmt.Println("App Started")
+	container.NewContainer()
+	fmt.Println("app finish")
 }
