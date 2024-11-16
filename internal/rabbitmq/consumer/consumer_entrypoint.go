@@ -22,6 +22,5 @@ func NewConsumerEntrypointInit(rabbitMQConfig *config.RabbitMqConfig, mainContro
 }
 
 func (consumerEntrypoint *ConsumerEntrypoint) ConsumerEntrypointStart() {
-	go consumerEntrypoint.ScrapingConsumer.ConsumeMessageFromMainController(consumerEntrypoint.RabbitMQ.Channel)
-
+	go consumerEntrypoint.ScrapingConsumer.ConsumeMessageProductCategory(consumerEntrypoint.RabbitMQ)
 }
