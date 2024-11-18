@@ -1,10 +1,12 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"log"
 
-	"github.com/gocolly/colly"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 )
 
 type ScrapingController struct{}
@@ -15,25 +17,41 @@ func NewScrapingController() *ScrapingController {
 }
 
 func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingController() {
-	fmt.Println("Success Scraping Data")
+	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false))...)
+	defer cancel()
+	ctx, cancel = chromedp.NewContext(ctx)
+	defer cancel()
 	var categoryURLs []string
-	c := colly.NewCollector()
 	url := "https://www.etsy.com/"
-	c.OnHTML("div[role='menu'] a", func(e *colly.HTMLElement) {
-		categoryURL := "https://www.etsy.com" + e.Attr("href")
-		categoryURLs = append(categoryURLs, categoryURL)
 
-	})
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		// chromedp.WaitVisible("div[role='menu']", chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var nodes []*cdp.Node
+			err := chromedp.Nodes("div[role='menu'] a", &nodes, chromedp.ByQueryAll).Do(ctx)
+			fmt.Println("tes")
+			if err != nil {
+				return fmt.Errorf("failed to query nodes: %w", err)
+			}
+			for _, node := range nodes {
+				var href string
+				err := chromedp.AttributeValue(node, "href", &href, nil).Do(ctx)
+				if err != nil {
+					log.Println("Failed to get href for node:", node, "Error:", err)
+					continue
+				}
+				categoryURLs = append(categoryURLs, href)
+			}
 
-	err := c.Visit(url)
+			return nil
+		}),
+	)
+
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error while performing the automation logic:", err)
 	}
-	c.Wait()
-	for _, categoryURL := range categoryURLs {
-		err := c.Visit(categoryURL)
-		if err != nil {
-			log.Println("Error visiting category:", err)
-		}
-	}
+
+	fmt.Println(categoryURLs)
+	fmt.Println("Success Scraping Data")
 }
