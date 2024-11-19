@@ -41,6 +41,7 @@ func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingContr
 
 	var categoryURLs []string
 	url := "https://www.etsy.com/"
+
 	err := chromedp.Run(ctx,
 		network.Enable(),
 		network.SetExtraHTTPHeaders(network.Headers(headers)),
@@ -54,15 +55,35 @@ func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingContr
 			if err != nil {
 				return fmt.Errorf("failed to query nodes: %w", err)
 			}
+
+			ch := make(chan string, len(nodes))
+
 			for _, node := range nodes {
-				var href string
-				err := chromedp.AttributeValue(node, "href", &href, nil).Do(ctx)
-				if err != nil {
-					log.Println("Failed to get href for node:", node, "Error:", err)
-					continue
-				}
-				categoryURLs = append(categoryURLs, href)
+				go func(node *cdp.Node) {
+					var href string
+					for i := 0; i < len(node.Attributes)-1; i += 2 {
+						if node.Attributes[i] == "href" {
+							href = node.Attributes[i+1]
+							break
+						}
+					}
+					if href == "" {
+						log.Println("Failed to extract href attribute")
+						ch <- ""
+					} else {
+						log.Printf("Extracted href: %s\n", href)
+						ch <- href
+					}
+				}(node)
 			}
+
+			for i := 0; i < len(nodes); i++ {
+				href := <-ch
+				if href != "" {
+					categoryURLs = append(categoryURLs, href)
+				}
+			}
+
 			return nil
 		}),
 	)
@@ -70,7 +91,5 @@ func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingContr
 	if err != nil {
 		log.Fatal("Error while performing the automation logic:", err)
 	}
-
-	fmt.Println(categoryURLs)
 	fmt.Println("Success Scraping Data")
 }
