@@ -19,6 +19,19 @@ func NewScrapingController() *ScrapingController {
 	return scrapingController
 }
 
+type Product struct {
+	ProductID   string  `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	ProductURL  string  `json:"product_url"`
+	Price       float64 `json:"price"`
+	Rating      float64 `json:"rating"`
+	ReviewCount int     `json:"review_count"`
+}
+type CategoryProducts struct {
+	CategoryID string    `json:"category_id"`
+	Products   []Product `json:"products"`
+}
+
 func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingController() {
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -40,16 +53,31 @@ func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingContr
 	defer cancel()
 
 	var categoryURLs []string
-	url := "https://www.etsy.com/"
+	baseUrl := "https://www.etsy.com/"
 
 	err := chromedp.Run(ctx,
 		network.Enable(),
 		network.SetExtraHTTPHeaders(network.Headers(headers)),
-		chromedp.Navigate(url),
-		chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
-		chromedp.Reload(),
+		chromedp.Navigate(baseUrl),
 		chromedp.Sleep(time.Duration(rand.Intn(5000)+1000)*time.Millisecond),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			var iframeExists bool
+			chromedp.Evaluate(`document.querySelector("iframe[src*='geo.captcha-delivery.com']") !== null`, &iframeExists).Do(ctx)
+
+			if iframeExists {
+				// Jika captcha terdeteksi
+				fmt.Println("Captcha detected, reloading page...")
+				err := chromedp.Reload().Do(ctx)
+				if err != nil {
+					log.Println("Error reloading page:", err)
+					return nil // Jika reload gagal, tetap lanjutkan scraping
+				}
+				log.Println("Page reloaded due to captcha, continuing scraping...")
+			} else {
+				fmt.Println("No captcha detected, proceeding with scraping...")
+			}
+
+			fmt.Println("captcha ga eksis")
 			var nodes []*cdp.Node
 			err := chromedp.Nodes("div[role='menu'] a", &nodes, chromedp.ByQueryAll).Do(ctx)
 			if err != nil {
@@ -80,7 +108,8 @@ func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingContr
 			for i := 0; i < len(nodes); i++ {
 				href := <-ch
 				if href != "" {
-					categoryURLs = append(categoryURLs, href)
+					fullURL := fmt.Sprintf("%s%s", baseUrl, href)
+					categoryURLs = append(categoryURLs, fullURL)
 				}
 			}
 
