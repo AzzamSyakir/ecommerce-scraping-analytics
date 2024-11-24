@@ -1,7 +1,7 @@
 package main
 
 import (
-	"etsy-trend-analytics/internal/container"
+	"ecommerce-scraping-analytics/internal/container"
 	"fmt"
 )
 

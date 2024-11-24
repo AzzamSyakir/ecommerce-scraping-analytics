@@ -1,4 +1,4 @@
-module etsy-trend-analytics
+module ecommerce-scraping-analytics
 
 go 1.23.2
 

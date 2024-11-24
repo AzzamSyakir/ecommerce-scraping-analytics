@@ -1,8 +1,8 @@
 package consumer
 
 import (
-	"etsy-trend-analytics/internal/config"
-	"etsy-trend-analytics/internal/controllers"
+	"ecommerce-scraping-analytics/internal/config"
+	"ecommerce-scraping-analytics/internal/controllers"
 )
 
 type ConsumerEntrypoint struct {

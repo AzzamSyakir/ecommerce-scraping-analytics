@@ -1,7 +1,7 @@
 package consumer
 
 import (
-	"etsy-trend-analytics/internal/controllers"
+	"ecommerce-scraping-analytics/internal/controllers"
 )
 
 type MainControllerConsumer struct {

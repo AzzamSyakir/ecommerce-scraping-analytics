@@ -1,6 +1,6 @@
 package container
 
-import "etsy-trend-analytics/internal/controllers"
+import "ecommerce-scraping-analytics/internal/controllers"
 
 type ControllerContainer struct {
 	LogicController    *controllers.LogicController

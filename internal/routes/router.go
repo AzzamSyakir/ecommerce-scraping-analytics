@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"etsy-trend-analytics/internal/controllers"
+	"ecommerce-scraping-analytics/internal/controllers"
 	"fmt"
 	"net/http"
 	"os"

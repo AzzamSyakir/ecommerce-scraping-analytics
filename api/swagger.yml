@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     This API provides analytics and trend insights for products, categories, and prices on Etsy. It offers data on trending product categories, popular products, and price fluctuations. The API supports both general and specific queries, allowing you to retrieve insights based on a defined date range.
-    You can access the project's source code here: [GitHub - Etsy Trend Analytics](https://github.com/AzzamSyakir/Etsy-trend-analytics)
+    You can access the project's source code here: [GitHub - Etsy Trend Analytics](https://github.com/AzzamSyakir/ecommerce-scraping-analytics)
 
 servers:
   - url: "https://api.example.com/v1"

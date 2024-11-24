@@ -8,8 +8,8 @@ COPY . .
 RUN go mod download
 
 #build and run code
-RUN go build -o /go-Etsy-trend-analytics
+RUN go build -o /go-ecommerce-scraping-analytics
 
 EXPOSE 8080
 
-CMD [ "/go-Etsy-trend-analytics" ]
+CMD [ "/go-ecommerce-scraping-analytics" ]

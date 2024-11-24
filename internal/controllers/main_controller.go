@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"etsy-trend-analytics/internal/config"
-	"etsy-trend-analytics/internal/model/response"
-	"etsy-trend-analytics/internal/rabbitmq/producer"
+	"ecommerce-scraping-analytics/internal/config"
+	"ecommerce-scraping-analytics/internal/model/response"
+	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

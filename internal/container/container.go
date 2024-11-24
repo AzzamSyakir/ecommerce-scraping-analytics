@@ -1,11 +1,11 @@
 package container
 
 import (
-	"etsy-trend-analytics/internal/config"
-	"etsy-trend-analytics/internal/controllers"
-	"etsy-trend-analytics/internal/rabbitmq/consumer"
-	"etsy-trend-analytics/internal/rabbitmq/producer"
-	"etsy-trend-analytics/internal/routes"
+	"ecommerce-scraping-analytics/internal/config"
+	"ecommerce-scraping-analytics/internal/controllers"
+	"ecommerce-scraping-analytics/internal/rabbitmq/consumer"
+	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
+	"ecommerce-scraping-analytics/internal/routes"
 	"log"
 
 	"github.com/gin-gonic/gin"
