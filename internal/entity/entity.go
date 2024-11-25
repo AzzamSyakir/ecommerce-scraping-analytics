@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type ProductCategoryTrend struct {
+type GetPopularProducts struct {
 	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()" json:"id"`
 	CategoryName string    `gorm:"type:varchar(100);not null" json:"category_name"`
 	SalesVolume  int       `gorm:"not null" json:"sales_volume"`

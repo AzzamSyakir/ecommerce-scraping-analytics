@@ -3,6 +3,7 @@ package consumer
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/controllers"
+	"encoding/json"
 	"log"
 )
 
@@ -11,7 +12,7 @@ type ScrapingControllerConsumer struct {
 }
 
 func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageProductCategory(rabbitMQConfig *config.RabbitMqConfig) {
-	queueName := "ProductCategoyTrends Queue"
+	queueName := "GetPopularProduct Queue"
 	q, err := rabbitMQConfig.Channel.QueueDeclare(
 		queueName, // name
 		true,      // durable
@@ -40,10 +41,10 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageProd
 	log.Printf("Consumer started for queue: %s", queueName)
 
 	for msg := range msgs {
-		messageBody := string(msg.Body)
-		if messageBody == expectedMessage {
+		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
+		if messageBody["message"] == expectedMessage {
 			log.Println("Expected message received. Starting scraping process...")
-			scrapingControllerConsumer.Controller.ProductCategoryTrendsScrapingController()
+			scrapingControllerConsumer.Controller.GetPopularProoduct(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)
 		}

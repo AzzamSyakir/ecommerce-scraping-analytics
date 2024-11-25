@@ -1,18 +1,7 @@
 package controllers
 
 import (
-	"bufio"
-	"context"
 	"fmt"
-	"log"
-	"math/rand"
-	"net/http"
-	"strings"
-	"time"
-
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/chromedp"
 )
 
 type ScrapingController struct{}
@@ -35,128 +24,129 @@ type CategoryProducts struct {
 	Products   []Product `json:"products"`
 }
 
-func getProxies() []string {
-	apiURL := "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all"
-	resp, err := http.Get(apiURL)
-	if err != nil {
-		log.Fatalf("Failed to fetch proxies: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to fetch proxies: status code %d", resp.StatusCode)
-	}
+// func getProxies() []string {
+// 	apiURL := "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all"
+// 	resp, err := http.Get(apiURL)
+// 	if err != nil {
+// 		log.Fatalf("Failed to fetch proxies: %v", err)
+// 	}
+// 	defer resp.Body.Close()
+// 	if resp.StatusCode != http.StatusOK {
+// 		log.Fatalf("Failed to fetch proxies: status code %d", resp.StatusCode)
+// 	}
 
-	var proxies []string
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			proxies = append(proxies, "http://"+line)
-		}
-	}
+// 	var proxies []string
+// 	scanner := bufio.NewScanner(resp.Body)
+// 	for scanner.Scan() {
+// 		line := strings.TrimSpace(scanner.Text())
+// 		if line != "" {
+// 			proxies = append(proxies, "http://"+line)
+// 		}
+// 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("Error reading proxies: %v", err)
-	}
+// 	if err := scanner.Err(); err != nil {
+// 		log.Fatalf("Error reading proxies: %v", err)
+// 	}
 
-	fmt.Printf("Fetched %d proxies from API\n", len(proxies))
-	return proxies
-}
+// 	fmt.Printf("Fetched %d proxies from API\n", len(proxies))
+// 	return proxies
+// }
 
-func (scrapingcontroller *ScrapingController) ProductCategoryTrendsScrapingController() {
-	proxies := getProxies()
-	if len(proxies) == 0 {
-		log.Fatal("No proxies available")
-	}
-	homepageProxy := proxies[rand.Intn(len(proxies))]
-	fmt.Println("homeProxy", homepageProxy)
-	// get categories detail
-	headers := map[string]interface{}{
-		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-		"Accept-Encoding":           "gzip, deflate, br",
-		"Accept-Language":           "en-US,en;q=0.5",
-		"Cache-Control":             "max-age=0",
-		"Connection":                "keep-alive",
-		"Upgrade-Insecure-Requests": "1",
-		"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
-		"Referer":                   "https://www.etsy.com",
-		"Sec-CH-UA":                 "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"99\"",
-		"Sec-CH-UA-Mobile":          "?0",
-		"Sec-CH-UA-Platform":        "\"Linux\"",
-	}
+func (scrapingcontroller *ScrapingController) GetPopularProoduct(seller string) {
+	fmt.Print("seller : ", seller)
+	// proxies := getProxies()
+	// if len(proxies) == 0 {
+	// 	log.Fatal("No proxies available")
+	// }
+	// homepageProxy := proxies[rand.Intn(len(proxies))]
+	// fmt.Println("homeProxy", homepageProxy)
+	// // get categories detail
+	// headers := map[string]interface{}{
+	// 	"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+	// 	"Accept-Encoding":           "gzip, deflate, br",
+	// 	"Accept-Language":           "en-US,en;q=0.5",
+	// 	"Cache-Control":             "max-age=0",
+	// 	"Connection":                "keep-alive",
+	// 	"Upgrade-Insecure-Requests": "1",
+	// 	"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
+	// 	"Referer":                   "https://www.etsy.com",
+	// 	"Sec-CH-UA":                 "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"99\"",
+	// 	"Sec-CH-UA-Mobile":          "?0",
+	// 	"Sec-CH-UA-Platform":        "\"Linux\"",
+	// }
 
-	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false), chromedp.ProxyServer(homepageProxy))...)
-	defer cancel()
-	ctx, cancel = chromedp.NewContext(ctx)
-	defer cancel()
+	// ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false), chromedp.ProxyServer(homepageProxy))...)
+	// defer cancel()
+	// ctx, cancel = chromedp.NewContext(ctx)
+	// defer cancel()
 
-	var categoryURLs []string
-	baseUrl := "https://www.etsy.com/"
+	// var categoryURLs []string
+	// baseUrl := "https://www.etsy.com/"
 
-	err := chromedp.Run(ctx,
-		network.Enable(),
-		network.SetExtraHTTPHeaders(network.Headers(headers)),
-		chromedp.Navigate(baseUrl),
-		chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			var iframeExists bool
-			chromedp.Evaluate(`document.querySelector("iframe[src*='geo.captcha-delivery.com']") !== null`, &iframeExists).Do(ctx)
+	// err := chromedp.Run(ctx,
+	// 	network.Enable(),
+	// 	network.SetExtraHTTPHeaders(network.Headers(headers)),
+	// 	chromedp.Navigate(baseUrl),
+	// 	chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
+	// 	chromedp.ActionFunc(func(ctx context.Context) error {
+	// 		var iframeExists bool
+	// 		chromedp.Evaluate(`document.querySelector("iframe[src*='geo.captcha-delivery.com']") !== null`, &iframeExists).Do(ctx)
 
-			if iframeExists {
-				fmt.Println("Captcha detected, reloading page...")
-				err := chromedp.Reload().Do(ctx)
-				if err != nil {
-					log.Println("Error reloading page:", err)
-					return nil
-				}
-				log.Println("Page reloaded due to captcha, continuing scraping...")
-			} else {
-				fmt.Println("No captcha detected, proceeding with scraping...")
-			}
-			var nodes []*cdp.Node
-			err := chromedp.Nodes("div[role='menu'] a", &nodes, chromedp.ByQueryAll).Do(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to query nodes: %w", err)
-			}
+	// 		if iframeExists {
+	// 			fmt.Println("Captcha detected, reloading page...")
+	// 			err := chromedp.Reload().Do(ctx)
+	// 			if err != nil {
+	// 				log.Println("Error reloading page:", err)
+	// 				return nil
+	// 			}
+	// 			log.Println("Page reloaded due to captcha, continuing scraping...")
+	// 		} else {
+	// 			fmt.Println("No captcha detected, proceeding with scraping...")
+	// 		}
+	// 		var nodes []*cdp.Node
+	// 		err := chromedp.Nodes("div[role='menu'] a", &nodes, chromedp.ByQueryAll).Do(ctx)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to query nodes: %w", err)
+	// 		}
 
-			ch := make(chan string, len(nodes))
+	// 		ch := make(chan string, len(nodes))
 
-			for _, node := range nodes {
-				go func(node *cdp.Node) {
-					var href string
-					for i := 0; i < len(node.Attributes)-1; i += 2 {
-						if node.Attributes[i] == "href" {
-							href = node.Attributes[i+1]
-							break
-						}
-					}
-					if href == "" {
-						log.Println("Failed to extract href attribute")
-						ch <- ""
-					} else {
-						ch <- href
-					}
-				}(node)
-			}
+	// 		for _, node := range nodes {
+	// 			go func(node *cdp.Node) {
+	// 				var href string
+	// 				for i := 0; i < len(node.Attributes)-1; i += 2 {
+	// 					if node.Attributes[i] == "href" {
+	// 						href = node.Attributes[i+1]
+	// 						break
+	// 					}
+	// 				}
+	// 				if href == "" {
+	// 					log.Println("Failed to extract href attribute")
+	// 					ch <- ""
+	// 				} else {
+	// 					ch <- href
+	// 				}
+	// 			}(node)
+	// 		}
 
-			for i := 0; i < len(nodes); i++ {
-				href := <-ch
-				if href != "" {
-					fullURL := fmt.Sprintf("%s%s", baseUrl, href)
-					categoryURLs = append(categoryURLs, fullURL)
-				}
-			}
+	// 		for i := 0; i < len(nodes); i++ {
+	// 			href := <-ch
+	// 			if href != "" {
+	// 				fullURL := fmt.Sprintf("%s%s", baseUrl, href)
+	// 				categoryURLs = append(categoryURLs, fullURL)
+	// 			}
+	// 		}
 
-			return nil
-		}),
-	)
-	fmt.Println("Scraping Category URLs completed")
-	for i, url := range categoryURLs {
-		fmt.Printf("Category %d: %s\n", i+1, url)
-	}
-	if err != nil {
-		log.Print("Error while performing getCategory Details logic:", err)
-	}
+	// 		return nil
+	// 	}),
+	// )
+	// fmt.Println("Scraping Category URLs completed")
+	// for i, url := range categoryURLs {
+	// 	fmt.Printf("Category %d: %s\n", i+1, url)
+	// }
+	// if err != nil {
+	// 	log.Print("Error while performing getCategory Details logic:", err)
+	// }
 	// get product category
 	// var wg sync.WaitGroup
 	// for i, url := range categoryURLs {

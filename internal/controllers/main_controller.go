@@ -24,7 +24,8 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 	return mainController
 }
 
-func (mainController *MainController) ProductCategoryTrendsMainController(c *gin.Context) {
+func (mainController *MainController) GetPopularProducts(c *gin.Context) {
+	seller := c.Param("seller")
 	RabbitMQConnection := mainController.Rabbitmq.Connection
 	rabbitMqchannel, err := RabbitMQConnection.Channel()
 	if err != nil {
@@ -36,12 +37,12 @@ func (mainController *MainController) ProductCategoryTrendsMainController(c *gin
 	}
 
 	_, err = rabbitMqchannel.QueueDeclare(
-		"ProductCategoyTrends Queue", // queue name
-		true,                         // durable
-		false,                        // auto delete
-		false,                        // exclusive
-		false,                        // no wait
-		nil,                          // arguments
+		"GetPopularProduct Queue", // queue name
+		true,                      // durable
+		false,                     // auto delete
+		false,                     // exclusive
+		false,                     // no wait
+		nil,                       // arguments
 	)
 	if err != nil {
 		result := &response.Response[interface{}]{
@@ -50,5 +51,5 @@ func (mainController *MainController) ProductCategoryTrendsMainController(c *gin
 		}
 		response.NewResponse(c.Writer, result)
 	}
-	mainController.Producer.CreateMessageToScrapingController(rabbitMqchannel)
+	mainController.Producer.CreateMessageGetPopularProducts(rabbitMqchannel, seller)
 }
