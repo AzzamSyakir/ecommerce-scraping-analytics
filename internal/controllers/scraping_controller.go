@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"regexp"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -18,7 +20,7 @@ func NewScrapingController() *ScrapingController {
 	return scrapingController
 }
 
-type Product struct {
+type products struct {
 	ProductID          string `json:"product_id"`
 	ProductName        string `json:"product_name"`
 	ProductURL         string `json:"product_url"`
@@ -27,8 +29,8 @@ type Product struct {
 	ProductReviewCount int    `json:"review_count"`
 }
 type CategoryProducts struct {
-	CategoryID string    `json:"category_id"`
-	Products   []Product `json:"products"`
+	CategoryID string     `json:"category_id"`
+	Products   []products `json:"products"`
 }
 
 // func getProxies() []string {
@@ -60,7 +62,27 @@ type CategoryProducts struct {
 // }
 
 func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(seller string) {
+	// func extract id from url
+
+	extractCategoryID := func(url string) string {
+		re := regexp.MustCompile(`/c/([0-9]+)`)
+		matches := re.FindStringSubmatch(url)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+		return ""
+	}
+	extractProductID := func(url string) string {
+		re := regexp.MustCompile(`/p/([0-9]+)`)
+		matches := re.FindStringSubmatch(url)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+		return ""
+	}
 	// get sellerCategory
+	var allCategoryProducts []CategoryProducts
+	var Product []products
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 		"Accept-Encoding":           "gzip, deflate, br",
@@ -81,7 +103,6 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 
 	var categoryURLs []string
 	baseUrl := "http://www.%s.ecrater.com%s"
-	sellerUrl := fmt.Sprintf(baseUrl, seller, "")
 	sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 
 	err := chromedp.Run(ctx,
@@ -109,82 +130,92 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 			if err != nil {
 				return err
 			}
-
-			for _, href := range hrefs {
-				fullUrl := fmt.Sprintf("%s%s", sellerUrl, href)
-				categoryURLs = append(categoryURLs, fullUrl)
-			}
+			categoryURLs = append(categoryURLs, hrefs...)
 			return nil
 		}),
 	)
 
 	if err != nil {
 		log.Print("Error while performing getSellerCategory Details logic:", err)
-	} else {
-		for i, url := range categoryURLs {
-			fmt.Printf("Category %d: %s\n", i+1, url)
-		}
 	}
 
 	fmt.Println("Scraping sellerCategory URLs completed")
 	// // getProduct from sellerCategory
-	// var wg sync.WaitGroup
 
-	// tabCtx, cancel := chromedp.NewContext(ctx)
-	// defer cancel()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var sellerProducts []string
 
-	// var sellerProducts []string
+	for _, url := range categoryURLs {
+		wg.Add(1)
 
-	// for _, url := range categoryURLs {
-	// 	wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
 
-	// 	go func(url string) {
-	// 		defer wg.Done()
+			tabCtx, cancel := chromedp.NewContext(ctx)
+			defer cancel()
 
-	// 		err := chromedp.Run(tabCtx,
-	// 			network.Enable(),
-	// 			network.SetExtraHTTPHeaders(network.Headers(headers)),
-	// 			chromedp.Navigate(url),
-	// 			chromedp.Sleep(5*time.Second),
-	// 			chromedp.ActionFunc(func(ctx context.Context) error {
-	// 				var nodes []*cdp.Node
-	// 				err := chromedp.Nodes("#product-list-grid > li:nth-child(2) > a", &nodes, chromedp.ByQueryAll).Do(ctx)
-	// 				if err != nil {
-	// 					return fmt.Errorf("failed to extract nodes: %w", err)
-	// 				}
+			var productHrefs []string
 
-	// 				for _, node := range nodes {
-	// 					var href string
-	// 					for i := 0; i < len(node.Attributes)-1; i += 2 {
-	// 						if node.Attributes[i] == "href" {
-	// 							href = node.Attributes[i+1]
-	// 							break
-	// 						}
-	// 					}
-	// 					if href != "" {
-	// 						sellerProducts = append(sellerProducts, href)
-	// 					}
-	// 				}
-	// 				return nil
-	// 			}),
-	// 		)
+			err := chromedp.Run(tabCtx,
+				network.Enable(),
+				network.SetExtraHTTPHeaders(network.Headers(headers)),
+				chromedp.Navigate(url),
+				chromedp.Sleep(3*time.Second),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					js := `
+						(() => {
+							const products = document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a');
+							return Array.from(products).map(a => a.href);
+						})()
+					`
+					return chromedp.Evaluate(js, &productHrefs).Do(ctx)
+				}),
+			)
 
-	// 		if err != nil {
-	// 			log.Println("Error while scraping category:", url, err)
-	// 		} else {
-	// 			fmt.Println("Successfully scraped category:", url)
-	// 		}
-	// 	}(url)
+			if err != nil {
+				log.Printf("Error while scraping product from category %s: %v\n", url, err)
+				return
+			}
 
-	// 	time.Sleep(5 * time.Second)
-	// }
+			mu.Lock()
+			sellerProducts = append(sellerProducts, productHrefs...)
+			mu.Unlock()
 
-	// wg.Wait()
+			log.Printf("Successfully scraped product from category: %s\n", url)
+		}(url)
 
-	// fmt.Println("Seller Product URLs:")
-	// for _, product := range sellerProducts {
-	// 	fmt.Println(product)
-	// }
+		time.Sleep(2 * time.Second)
+	}
+	wg.Wait()
+	for _, productUrl := range sellerProducts {
+		productId := extractProductID(productUrl)
+		Product = append(Product, products{
+			ProductID:  productId,
+			ProductURL: productUrl,
+		})
+	}
 
-	fmt.Println("Success Scraping Data")
+	for i, url := range categoryURLs {
+		fmt.Printf("Category %d: %s\n", i+1, url)
+		categoryID := extractCategoryID(url)
+		categoryProducts := append([]products{}, Product...)
+
+		allCategoryProducts = append(allCategoryProducts, CategoryProducts{
+			CategoryID: categoryID,
+			Products:   categoryProducts,
+		})
+	}
+
+	for _, category := range allCategoryProducts {
+		fmt.Printf("Category ID: %s\n", category.CategoryID)
+		if len(category.Products) == 0 {
+			fmt.Println("\tNo products found for this category.")
+		} else {
+			for i, product := range category.Products {
+				fmt.Printf("\tProduct %d URL: %s, Product ID: %s\n", i+1, product.ProductURL, product.ProductID)
+			}
+		}
+		fmt.Println("Success Scraping Data")
+	}
 }
