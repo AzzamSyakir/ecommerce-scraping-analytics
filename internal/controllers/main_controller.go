@@ -24,7 +24,7 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 	return mainController
 }
 
-func (mainController *MainController) GetPopularProducts(c *gin.Context) {
+func (mainController *MainController) GetPopularProductsBySeller(c *gin.Context) {
 	seller := c.Param("seller")
 	RabbitMQConnection := mainController.Rabbitmq.Connection
 	rabbitMqchannel, err := RabbitMQConnection.Channel()

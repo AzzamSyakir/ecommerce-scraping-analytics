@@ -12,6 +12,7 @@ require (
 require (
 	github.com/bytedance/sonic v1.12.4 // indirect
 	github.com/bytedance/sonic/loader v0.2.1 // indirect
+	github.com/chromedp/cdproto v0.0.0-20241110205750-a72e6703cd9b
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
@@ -52,7 +53,6 @@ require (
 require github.com/chromedp/chromedp v0.11.2
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20241110205750-a72e6703cd9b
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

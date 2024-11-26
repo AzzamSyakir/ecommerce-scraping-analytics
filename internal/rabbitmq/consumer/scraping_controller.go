@@ -11,7 +11,7 @@ type ScrapingControllerConsumer struct {
 	Controller *controllers.ScrapingController
 }
 
-func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageProductCategory(rabbitMQConfig *config.RabbitMqConfig) {
+func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessagePopularProduct(rabbitMQConfig *config.RabbitMqConfig) {
 	queueName := "GetPopularProduct Queue"
 	q, err := rabbitMQConfig.Channel.QueueDeclare(
 		queueName, // name
@@ -44,7 +44,7 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageProd
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
 			log.Println("Expected message received. Starting scraping process...")
-			scrapingControllerConsumer.Controller.GetPopularProoduct(messageBody["seller"])
+			scrapingControllerConsumer.Controller.ScrapePopularProductsBySeller(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)
 		}

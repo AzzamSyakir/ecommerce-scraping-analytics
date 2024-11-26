@@ -1,7 +1,15 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"math/rand"
+	"time"
+
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/chromedp"
 )
 
 type ScrapingController struct{}
@@ -52,175 +60,110 @@ type CategoryProducts struct {
 // 	return proxies
 // }
 
-func (scrapingcontroller *ScrapingController) GetPopularProoduct(seller string) {
-	fmt.Print("seller : ", seller)
-	// proxies := getProxies()
-	// if len(proxies) == 0 {
-	// 	log.Fatal("No proxies available")
-	// }
-	// homepageProxy := proxies[rand.Intn(len(proxies))]
-	// fmt.Println("homeProxy", homepageProxy)
-	// // get categories detail
-	// headers := map[string]interface{}{
-	// 	"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-	// 	"Accept-Encoding":           "gzip, deflate, br",
-	// 	"Accept-Language":           "en-US,en;q=0.5",
-	// 	"Cache-Control":             "max-age=0",
-	// 	"Connection":                "keep-alive",
-	// 	"Upgrade-Insecure-Requests": "1",
-	// 	"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
-	// 	"Referer":                   "https://www.etsy.com",
-	// 	"Sec-CH-UA":                 "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"99\"",
-	// 	"Sec-CH-UA-Mobile":          "?0",
-	// 	"Sec-CH-UA-Platform":        "\"Linux\"",
-	// }
+func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(seller string) {
+	// get sellerCategory
+	headers := map[string]interface{}{
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"Accept-Language":           "en-US,en;q=0.5",
+		"Cache-Control":             "max-age=0",
+		"Connection":                "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+		"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
+		"Referer":                   "https://www.etsy.com",
+		"Sec-CH-UA":                 "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"99\"",
+		"Sec-CH-UA-Mobile":          "?0",
+		"Sec-CH-UA-Platform":        "\"Linux\"",
+	}
+	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false))...)
+	defer cancel()
+	ctx, cancel = chromedp.NewContext(ctx)
+	defer cancel()
 
-	// ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false), chromedp.ProxyServer(homepageProxy))...)
-	// defer cancel()
-	// ctx, cancel = chromedp.NewContext(ctx)
-	// defer cancel()
+	var categoryURLs []string
+	baseUrl := "http://www.%s.ecrater.com%s"
+	sellerUrl := fmt.Sprintf(baseUrl, seller, "")
+	sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 
-	// var categoryURLs []string
-	// baseUrl := "https://www.etsy.com/"
+	urlSet := make(map[string]struct{})
 
-	// err := chromedp.Run(ctx,
-	// 	network.Enable(),
-	// 	network.SetExtraHTTPHeaders(network.Headers(headers)),
-	// 	chromedp.Navigate(baseUrl),
-	// 	chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
-	// 	chromedp.ActionFunc(func(ctx context.Context) error {
-	// 		var iframeExists bool
-	// 		chromedp.Evaluate(`document.querySelector("iframe[src*='geo.captcha-delivery.com']") !== null`, &iframeExists).Do(ctx)
+	err := chromedp.Run(ctx,
+		network.Enable(),
+		network.SetExtraHTTPHeaders(network.Headers(headers)),
+		chromedp.Navigate(sellerCategory),
+		chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var sections []*cdp.Node
+			err := chromedp.Nodes("section.clearfix", &sections, chromedp.ByQueryAll).Do(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to query sections: %w", err)
+			}
 
-	// 		if iframeExists {
-	// 			fmt.Println("Captcha detected, reloading page...")
-	// 			err := chromedp.Reload().Do(ctx)
-	// 			if err != nil {
-	// 				log.Println("Error reloading page:", err)
-	// 				return nil
-	// 			}
-	// 			log.Println("Page reloaded due to captcha, continuing scraping...")
-	// 		} else {
-	// 			fmt.Println("No captcha detected, proceeding with scraping...")
-	// 		}
-	// 		var nodes []*cdp.Node
-	// 		err := chromedp.Nodes("div[role='menu'] a", &nodes, chromedp.ByQueryAll).Do(ctx)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to query nodes: %w", err)
-	// 		}
+			for range sections {
+				var href string
+				err := chromedp.AttributeValue("a", "href", &href, nil).Do(ctx)
+				if err != nil || href == "" {
+					continue
+				}
 
-	// 		ch := make(chan string, len(nodes))
+				fullURL := fmt.Sprintf("%s%s", sellerUrl, href)
+				if _, exists := urlSet[fullURL]; !exists {
+					categoryURLs = append(categoryURLs, fullURL)
+					urlSet[fullURL] = struct{}{}
+				}
+			}
 
-	// 		for _, node := range nodes {
-	// 			go func(node *cdp.Node) {
-	// 				var href string
-	// 				for i := 0; i < len(node.Attributes)-1; i += 2 {
-	// 					if node.Attributes[i] == "href" {
-	// 						href = node.Attributes[i+1]
-	// 						break
-	// 					}
-	// 				}
-	// 				if href == "" {
-	// 					log.Println("Failed to extract href attribute")
-	// 					ch <- ""
-	// 				} else {
-	// 					ch <- href
-	// 				}
-	// 			}(node)
-	// 		}
+			return nil
+		}),
+	)
 
-	// 		for i := 0; i < len(nodes); i++ {
-	// 			href := <-ch
-	// 			if href != "" {
-	// 				fullURL := fmt.Sprintf("%s%s", baseUrl, href)
-	// 				categoryURLs = append(categoryURLs, fullURL)
-	// 			}
-	// 		}
+	if err != nil {
+		log.Print("Error while performing getSellerCategory Details logic:", err)
+	} else {
+		for i, url := range categoryURLs {
+			fmt.Printf("Category %d: %s\n", i+1, url)
+		}
+	}
 
-	// 		return nil
-	// 	}),
-	// )
-	// fmt.Println("Scraping Category URLs completed")
-	// for i, url := range categoryURLs {
-	// 	fmt.Printf("Category %d: %s\n", i+1, url)
-	// }
-	// if err != nil {
-	// 	log.Print("Error while performing getCategory Details logic:", err)
-	// }
-	// get product category
+	fmt.Println("Scraping sellerCategory URLs completed")
+
+	// // getProduct from sellerCategory
 	// var wg sync.WaitGroup
-	// for i, url := range categoryURLs {
+
+	// tabCtx, cancel := chromedp.NewContext(ctx)
+	// defer cancel()
+
+	// var sellerProducts []string
+
+	// for _, url := range categoryURLs {
 	// 	wg.Add(1)
-	// 	categoryProxy := proxies[i%len(proxies)]
-	// 	fmt.Println("categoryProxy", categoryProxy)
 
 	// 	go func(url string) {
 	// 		defer wg.Done()
 
-	// 		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false), chromedp.ProxyServer(categoryProxy))...)
-	// 		defer cancel()
-
-	// 		tabCtx, cancel := chromedp.NewContext(allocCtx)
-	// 		defer cancel()
-	// 		var products []Product
 	// 		err := chromedp.Run(tabCtx,
 	// 			network.Enable(),
 	// 			network.SetExtraHTTPHeaders(network.Headers(headers)),
 	// 			chromedp.Navigate(url),
-	// 			chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
+	// 			chromedp.Sleep(5*time.Second),
 	// 			chromedp.ActionFunc(func(ctx context.Context) error {
-	// 				var iframeExists bool
-	// 				chromedp.Evaluate(`document.querySelector("iframe[src*='geo.captcha-delivery.com']") !== null`, &iframeExists).Do(ctx)
-	// 				if iframeExists {
-	// 					fmt.Println("Captcha detected, reloading page...")
-	// 					err := chromedp.Reload().Do(ctx)
-	// 					if err != nil {
-	// 						log.Println("Error reloading page:", err)
-	// 						return nil
-	// 					}
-	// 					log.Println("Page reloaded due to captcha, continuing scraping...")
-	// 				} else {
-	// 					fmt.Println("No captcha detected, proceeding with scraping...")
-	// 				}
-
-	// 				var jsonData string
-	// 				err := chromedp.Evaluate(`document.querySelector("script[type='application/ld+json']").innerText`, &jsonData).Do(ctx)
+	// 				var nodes []*cdp.Node
+	// 				err := chromedp.Nodes("#product-list-grid > li:nth-child(2) > a", &nodes, chromedp.ByQueryAll).Do(ctx)
 	// 				if err != nil {
-	// 					return fmt.Errorf("failed to extract JSON data: %w", err)
+	// 					return fmt.Errorf("failed to extract nodes: %w", err)
 	// 				}
 
-	// 				var rawData struct {
-	// 					ItemListElement []struct {
-	// 						Url    string `json:"url"`
-	// 						Name   string `json:"name"`
-	// 						Offers struct {
-	// 							Price         string `json:"price"`
-	// 							PriceCurrency string `json:"priceCurrency"`
-	// 						} `json:"offers"`
-	// 						Brand struct {
-	// 							Name string `json:"name"`
-	// 						} `json:"brand"`
-	// 						Position int `json:"position"`
-	// 					} `json:"itemListElement"`
-	// 				}
-
-	// 				err = json.Unmarshal([]byte(jsonData), &rawData)
-	// 				if err != nil {
-	// 					return fmt.Errorf("failed to parse JSON data: %w", err)
-	// 				}
-
-	// 				for _, item := range rawData.ItemListElement {
-	// 					var productId string
-	// 					re := regexp.MustCompile(`/listing/(\d+)`)
-	// 					matches := re.FindStringSubmatch(item.Url)
-	// 					if len(matches) > 1 {
-	// 						productId = matches[1]
+	// 				for _, node := range nodes {
+	// 					var href string
+	// 					for i := 0; i < len(node.Attributes)-1; i += 2 {
+	// 						if node.Attributes[i] == "href" {
+	// 							href = node.Attributes[i+1]
+	// 							break
+	// 						}
 	// 					}
-	// 					products = append(products, Product{
-	// 						ProductID:    productId,
-	// 						ProductName:  item.Name,
-	// 						ProductPrice: item.Offers.Price,
-	// 					})
+	// 					if href != "" {
+	// 						sellerProducts = append(sellerProducts, href)
+	// 					}
 	// 				}
 	// 				return nil
 	// 			}),
@@ -230,14 +173,18 @@ func (scrapingcontroller *ScrapingController) GetPopularProoduct(seller string) 
 	// 			log.Println("Error while scraping category:", url, err)
 	// 		} else {
 	// 			fmt.Println("Successfully scraped category:", url)
-	// 			fmt.Println("Products:")
-	// 			for _, product := range products {
-	// 				fmt.Printf("ID: %s, Name: %s, Price: %s\n", product.ProductID, product.ProductName, product.ProductPrice)
-	// 			}
 	// 		}
 	// 	}(url)
+
+	// 	time.Sleep(5 * time.Second)
 	// }
 
 	// wg.Wait()
+
+	// fmt.Println("Seller Product URLs:")
+	// for _, product := range sellerProducts {
+	// 	fmt.Println(product)
+	// }
+
 	fmt.Println("Success Scraping Data")
 }
