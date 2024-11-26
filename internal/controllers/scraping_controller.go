@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
@@ -85,34 +84,36 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 	sellerUrl := fmt.Sprintf(baseUrl, seller, "")
 	sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 
-	urlSet := make(map[string]struct{})
-
 	err := chromedp.Run(ctx,
 		network.Enable(),
 		network.SetExtraHTTPHeaders(network.Headers(headers)),
 		chromedp.Navigate(sellerCategory),
 		chromedp.Sleep(time.Duration(rand.Intn(1000)+1000)*time.Millisecond),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			var sections []*cdp.Node
-			err := chromedp.Nodes("section.clearfix", &sections, chromedp.ByQueryAll).Do(ctx)
+			var hrefs []string
+			js := `
+				(() => {
+					const sections = document.querySelectorAll('section.clearfix');
+					let allHrefs = [];
+					sections.forEach(section => {
+						const link = section.querySelector('a');
+						if (link && link.href) {
+							allHrefs.push(link.href);
+						}
+					});
+					return allHrefs;
+				})()
+			`
+
+			err := chromedp.Evaluate(js, &hrefs).Do(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to query sections: %w", err)
+				return err
 			}
 
-			for range sections {
-				var href string
-				err := chromedp.AttributeValue("a", "href", &href, nil).Do(ctx)
-				if err != nil || href == "" {
-					continue
-				}
-
-				fullURL := fmt.Sprintf("%s%s", sellerUrl, href)
-				if _, exists := urlSet[fullURL]; !exists {
-					categoryURLs = append(categoryURLs, fullURL)
-					urlSet[fullURL] = struct{}{}
-				}
+			for _, href := range hrefs {
+				fullUrl := fmt.Sprintf("%s%s", sellerUrl, href)
+				categoryURLs = append(categoryURLs, fullUrl)
 			}
-
 			return nil
 		}),
 	)
@@ -126,7 +127,6 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 	}
 
 	fmt.Println("Scraping sellerCategory URLs completed")
-
 	// // getProduct from sellerCategory
 	// var wg sync.WaitGroup
 
