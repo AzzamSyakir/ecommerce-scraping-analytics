@@ -44,7 +44,7 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessagePopu
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
 			log.Println("Expected message received. Starting scraping process...")
-			scrapingControllerConsumer.Controller.ScrapePopularProductsBySeller(messageBody["seller"])
+			scrapingControllerConsumer.Controller.ScrapeSellerProduct(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)
 		}

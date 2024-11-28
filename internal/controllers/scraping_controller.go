@@ -39,7 +39,7 @@ type CategoryProducts struct {
 	Products     []Product `json:"products"`
 }
 
-func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(seller string) {
+func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
 	// func extract id from url
 	extractCategoryID := func(url string) string {
 		re := regexp.MustCompile(`/c/([0-9]+)`)
@@ -140,7 +140,7 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 				network.Enable(),
 				network.SetExtraHTTPHeaders(network.Headers(headers)),
 				chromedp.Navigate(url),
-				chromedp.Sleep(3*time.Second),
+				chromedp.WaitReady("#product-list-grid"),
 				chromedp.ActionFunc(func(ctx context.Context) error {
 					js := `
                     (() => {
@@ -235,38 +235,96 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 		cancel()
 	}
 	// scrape review
-	if len(Products) > 0 {
-		var reviewURL string
-		selectedProduct := Products[0]
+	// get reviewUrl
+	if len(Products) == 0 {
+		log.Println("No products available to extract review URL.")
+		return
+	}
 
-		tabCtx, cancel := chromedp.NewContext(ctx)
-		defer cancel()
+	var reviewURL string
+	selectedProduct := Products[0]
+
+	tabCtx, cancel := chromedp.NewContext(ctx)
+	defer cancel()
+
+	err = chromedp.Run(tabCtx,
+		network.Enable(),
+		network.SetExtraHTTPHeaders(network.Headers(headers)),
+		chromedp.Navigate(selectedProduct.ProductURL),
+		chromedp.Sleep(3*time.Second),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			js := `
+        (() => {
+            const reviewLinkElement = document.querySelector('a[href*="view-feedback"]');
+            return reviewLinkElement ? reviewLinkElement.href : '';
+        })()
+        `
+			return chromedp.Evaluate(js, &reviewURL).Do(ctx)
+		}),
+	)
+
+	if err != nil {
+		log.Printf("Error while extracting review URL from product %s: %v\n", selectedProduct.ProductURL, err)
+		return
+	}
+
+	if reviewURL == "" {
+		log.Printf("No review URL found for product: %s\n", selectedProduct.ProductURL)
+		return
+	}
+	chromedp.Sleep(3 * time.Second)
+	// get review for each product
+	for _, product := range Products {
+		var reviewCounts struct {
+			Positive int `json:"positive"`
+			Neutral  int `json:"neutral"`
+			Negative int `json:"negative"`
+		}
 
 		err := chromedp.Run(tabCtx,
 			network.Enable(),
 			network.SetExtraHTTPHeaders(network.Headers(headers)),
-			chromedp.Navigate(selectedProduct.ProductURL),
+			chromedp.Navigate(reviewURL),
 			chromedp.Sleep(3*time.Second),
 			chromedp.ActionFunc(func(ctx context.Context) error {
+				productName := product.ProductTitle
 				js := `
             (() => {
-                const reviewLinkElement = document.querySelector('a[href*="view-feedback"]');
-                return reviewLinkElement ? reviewLinkElement.href : '';
+                const table = document.querySelector('#comments > table');
+                if (!table) return { positive: 0, neutral: 0, negative: 0 };
+
+                const productNameElement = table.querySelector('tbody > tr:nth-child(2) > td:nth-child(3)');
+                const reviews = Array.from(table.querySelectorAll('tbody > tr:nth-child(2) > td:nth-child(1) > i'));
+
+                if (!productNameElement || productNameElement.textContent.trim() !== "` + productName + `") {
+                    return { positive: 0, neutral: 0, negative: 0 };
+                }
+
+                let counts = { positive: 0, neutral: 0, negative: 0 };
+                reviews.forEach(review => {
+                    const reviewType = review.textContent.trim().toLowerCase();
+                    if (reviewType.includes('positive')) counts.positive++;
+                    else if (reviewType.includes('neutral')) counts.neutral++;
+                    else if (reviewType.includes('negative')) counts.negative++;
+                });
+
+                return counts;
             })()
             `
-				return chromedp.Evaluate(js, &reviewURL).Do(ctx)
+				return chromedp.Evaluate(js, &reviewCounts).Do(ctx)
 			}),
 		)
 
 		if err != nil {
-			log.Printf("Error while extracting review URL from product %s: %v\n", selectedProduct.ProductURL, err)
-		} else if reviewURL != "" {
-			log.Printf("Successfully extracted review URL for store: %s\n", reviewURL)
-		} else {
-			log.Printf("No review URL found for product: %s\n", selectedProduct.ProductURL)
+			log.Printf("Error while getting reviews for product %s: %v\n", product.ProductTitle, err)
+			continue
 		}
-	} else {
-		log.Println("No products available to extract review URL.")
+		Products = append(Products, Product{
+			PositiveRating: product.PositiveRating,
+			NegativeRating: product.NegativeRating,
+			NeutralRating:  product.NeutralRating,
+		})
+
 	}
 
 	// Organizing Category Data
@@ -280,29 +338,5 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 		})
 	}
 
-	// Displaying Scraped Data
-	// for i, category := range allCategoryProducts {
-	// 	fmt.Printf("Category %d:\n", i+1)
-	// 	fmt.Printf("\tCategory ID: %s\n", category.CategoryID)
-	// 	fmt.Printf("\tCategory Name: %s\n", category.CategoryName)
-
-	// 	if len(category.Products) == 0 {
-	// 		fmt.Println("\tNo products found for this category.")
-	// 	} else {
-	// 		fmt.Println("\tProducts:")
-	// 		for j, product := range category.Products {
-	// 			fmt.Printf("\t\tProduct %d:\n", j+1)
-	// 			fmt.Printf("\t\t\tProduct ID: %s\n", product.ProductID)
-	// 			fmt.Printf("\t\t\tProduct Title: %s\n", product.ProductTitle)
-	// 			fmt.Printf("\t\t\tProduct URL: %s\n", product.ProductURL)
-	// 			fmt.Printf("\t\t\tProduct Price: %s\n", product.ProductPrice)
-	// 			fmt.Printf("\t\t\tProduct Stock: %s\n", product.ProductStock)
-	// 			fmt.Printf("\t\t\tProduct Sold: %s\n", product.ProductSold)
-	// 			fmt.Printf("\t\t\tPositive Rating: %d\n", product.PositiveRating)
-	// 			fmt.Printf("\t\t\tNeutral Rating: %d\n", product.NeutralRating)
-	// 			fmt.Printf("\t\t\tNegative Rating: %d\n", product.NegativeRating)
-	// 		}
-	// 	}
-	// }
 	fmt.Println("Success Scraping Data")
 }
