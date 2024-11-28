@@ -59,7 +59,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	}
 	// get sellerCategory
 	var allCategoryProducts []CategoryProducts
-	var Products []Product
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 		"Accept-Encoding":           "gzip, deflate, br",
@@ -117,17 +116,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	}
 
 	fmt.Println("Scraping sellerCategory URLs completed")
-	// Scraping Product from Categories
+	// Scraping get list Product from each Categories
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var productResults []struct {
-		Href      string `json:"href"`
-		Title     string `json:"title"`
-		Price     string `json:"price"`
-		Sold      string `json:"sold"`
-		Available string `json:"available"`
-	}
-
+	var Products []Product
 	for _, url := range categoryURLs {
 		wg.Add(1)
 		go func(url string) {
@@ -135,6 +127,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 			tabCtx, cancel := chromedp.NewContext(ctx)
 			defer cancel()
+
+			var categoryProductResults []struct {
+				Href  string `json:"href"`
+				Title string `json:"title"`
+			}
 
 			err := chromedp.Run(tabCtx,
 				network.Enable(),
@@ -151,7 +148,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
                         }));
                     })()
                 `
-					return chromedp.Evaluate(js, &productResults).Do(ctx)
+					return chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
 				}),
 			)
 
@@ -161,13 +158,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			}
 
 			mu.Lock()
-			for _, productResult := range productResults {
+			for _, productResult := range categoryProductResults {
 				Products = append(Products, Product{
 					ProductID:    extractProductID(productResult.Href),
-					ProductStock: productResult.Available,
 					ProductTitle: productResult.Title,
-					ProductPrice: productResult.Price,
-					ProductSold:  productResult.Sold,
 					ProductURL:   productResult.Href,
 				})
 			}
@@ -192,6 +186,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		tabCtx, cancel := chromedp.NewContext(ctx)
 		defer cancel()
 
+		var productDetailsResults []struct {
+			Available string `json:"available"`
+			Sold      string `json:"sold"`
+			Price     string `json:"price"`
+		}
+
 		err := chromedp.Run(tabCtx,
 			network.Enable(),
 			network.SetExtraHTTPHeaders(network.Headers(headers)),
@@ -210,7 +210,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
                 });
             })()
             `
-				return chromedp.Evaluate(js, &productResults).Do(ctx)
+				return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 			}),
 		)
 
@@ -221,14 +221,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		}
 
 		mu.Lock()
-		for _, productResult := range productResults {
+		for _, productResult := range productDetailsResults {
 			Products = append(Products, Product{
-				ProductID:    extractProductID(productResult.Href),
 				ProductStock: productResult.Available,
-				ProductTitle: productResult.Title,
 				ProductPrice: productResult.Price,
 				ProductSold:  productResult.Sold,
-				ProductURL:   productResult.Href,
 			})
 		}
 		mu.Unlock()
@@ -330,11 +327,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	// Organizing Category Data
 	for _, url := range categoryURLs {
 		categoryID := extractCategoryID(url)
-		categoryProducts := append([]Product{}, Products...)
 
 		_ = append(allCategoryProducts, CategoryProducts{
 			CategoryID: categoryID,
-			Products:   categoryProducts,
+			Products:   Products,
 		})
 	}
 
