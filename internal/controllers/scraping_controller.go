@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,50 +21,26 @@ func NewScrapingController() *ScrapingController {
 	return scrapingController
 }
 
-type products struct {
-	ProductID          string `json:"product_id"`
-	ProductName        string `json:"product_name"`
-	ProductURL         string `json:"product_url"`
-	ProductPrice       string `json:"price"`
-	ProductRating      string `json:"rating"`
-	ProductReviewCount int    `json:"review_count"`
+type Product struct {
+	ProductID      string `json:"product_id"`
+	ProductTitle   string `json:"product_name"`
+	ProductURL     string `json:"product_url"`
+	ProductPrice   string `json:"price"`
+	ProductStock   string `json:"product_stock"`
+	ProductSold    string `json:"product_sold"`
+	PositiveRating int    `json:"positive_rating"`
+	NeutralRating  int    `json:"neutral_rating"`
+	NegativeRating int    `json:"negative_rating"`
 }
+
 type CategoryProducts struct {
-	CategoryID string     `json:"category_id"`
-	Products   []products `json:"products"`
+	CategoryID   string    `json:"category_id"`
+	CategoryName string    `json:"category_name"`
+	Products     []Product `json:"products"`
 }
-
-// func getProxies() []string {
-// 	apiURL := "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all"
-// 	resp, err := http.Get(apiURL)
-// 	if err != nil {
-// 		log.Fatalf("Failed to fetch proxies: %v", err)
-// 	}
-// 	defer resp.Body.Close()
-// 	if resp.StatusCode != http.StatusOK {
-// 		log.Fatalf("Failed to fetch proxies: status code %d", resp.StatusCode)
-// 	}
-
-// 	var proxies []string
-// 	scanner := bufio.NewScanner(resp.Body)
-// 	for scanner.Scan() {
-// 		line := strings.TrimSpace(scanner.Text())
-// 		if line != "" {
-// 			proxies = append(proxies, "http://"+line)
-// 		}
-// 	}
-
-// 	if err := scanner.Err(); err != nil {
-// 		log.Fatalf("Error reading proxies: %v", err)
-// 	}
-
-// 	fmt.Printf("Fetched %d proxies from API\n", len(proxies))
-// 	return proxies
-// }
 
 func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(seller string) {
 	// func extract id from url
-
 	extractCategoryID := func(url string) string {
 		re := regexp.MustCompile(`/c/([0-9]+)`)
 		matches := re.FindStringSubmatch(url)
@@ -82,7 +59,7 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 	}
 	// get sellerCategory
 	var allCategoryProducts []CategoryProducts
-	var Product []products
+	var Products []Product
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 		"Accept-Encoding":           "gzip, deflate, br",
@@ -140,22 +117,24 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 	}
 
 	fmt.Println("Scraping sellerCategory URLs completed")
-	// // getProduct from sellerCategory
-
+	// Scraping Product from Categories
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var sellerProducts []string
+	var productResults []struct {
+		Href      string `json:"href"`
+		Title     string `json:"title"`
+		Price     string `json:"price"`
+		Sold      string `json:"sold"`
+		Available string `json:"available"`
+	}
 
 	for _, url := range categoryURLs {
 		wg.Add(1)
-
 		go func(url string) {
 			defer wg.Done()
 
 			tabCtx, cancel := chromedp.NewContext(ctx)
 			defer cancel()
-
-			var productHrefs []string
 
 			err := chromedp.Run(tabCtx,
 				network.Enable(),
@@ -164,12 +143,15 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 				chromedp.Sleep(3*time.Second),
 				chromedp.ActionFunc(func(ctx context.Context) error {
 					js := `
-						(() => {
-							const products = document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a');
-							return Array.from(products).map(a => a.href);
-						})()
-					`
-					return chromedp.Evaluate(js, &productHrefs).Do(ctx)
+                    (() => {
+                        const elements = document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a');
+                        return Array.from(elements).map(a => ({
+                            href: a.href,
+                            title: a.title
+                        }));
+                    })()
+                `
+					return chromedp.Evaluate(js, &productResults).Do(ctx)
 				}),
 			)
 
@@ -179,43 +161,148 @@ func (scrapingcontroller *ScrapingController) ScrapePopularProductsBySeller(sell
 			}
 
 			mu.Lock()
-			sellerProducts = append(sellerProducts, productHrefs...)
+			for _, productResult := range productResults {
+				Products = append(Products, Product{
+					ProductID:    extractProductID(productResult.Href),
+					ProductStock: productResult.Available,
+					ProductTitle: productResult.Title,
+					ProductPrice: productResult.Price,
+					ProductSold:  productResult.Sold,
+					ProductURL:   productResult.Href,
+				})
+			}
 			mu.Unlock()
 
-			log.Printf("Successfully scraped product from category: %s\n", url)
+			time.Sleep(2 * time.Second)
+			cancel()
 		}(url)
-
-		time.Sleep(2 * time.Second)
 	}
 	wg.Wait()
-	for _, productUrl := range sellerProducts {
-		productId := extractProductID(productUrl)
-		Product = append(Product, products{
-			ProductID:  productId,
-			ProductURL: productUrl,
-		})
+
+	// Scraping Each Product Details
+	for _, product := range Products {
+		var productUrl string
+		if strings.Contains(product.ProductURL, ".ecrater.com") {
+			pos := strings.Index(product.ProductURL, ".ecrater.com")
+			if pos != -1 {
+				productUrl = "https://www.ecrater.com" + product.ProductURL[pos+len(".ecrater.com"):]
+			}
+		}
+
+		tabCtx, cancel := chromedp.NewContext(ctx)
+		defer cancel()
+
+		err := chromedp.Run(tabCtx,
+			network.Enable(),
+			network.SetExtraHTTPHeaders(network.Headers(headers)),
+			chromedp.Navigate(productUrl),
+			chromedp.Sleep(3*time.Second),
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				js := `
+            (() => {
+                const productPriceElements = document.querySelectorAll('#container > div > #content > #product-title > #product-title-actions > #product-title-actions > span > #price');
+                const productDetailsElements = document.querySelectorAll('#container > div > #content > #product-image-container > #wBiggerImage > #product-details > #product-quantity');
+                return Array.from(productDetailsElements).map(productDetailsElement => {
+                    const available = productDetailsElement.querySelector('p')?.textContent.trim() || '';
+                    const sold = productDetailsElement.querySelector('b')?.textContent.match(/\\d+/)?.[0] || '0';
+                    const price = productPriceElements.length > 0 ? productPriceElements[0].textContent.trim() : '';
+                    return { available, sold, price };
+                });
+            })()
+            `
+				return chromedp.Evaluate(js, &productResults).Do(ctx)
+			}),
+		)
+
+		if err != nil {
+			log.Printf("Error while scraping each product%s: %v\n", productUrl, err)
+			cancel()
+			continue
+		}
+
+		mu.Lock()
+		for _, productResult := range productResults {
+			Products = append(Products, Product{
+				ProductID:    extractProductID(productResult.Href),
+				ProductStock: productResult.Available,
+				ProductTitle: productResult.Title,
+				ProductPrice: productResult.Price,
+				ProductSold:  productResult.Sold,
+				ProductURL:   productResult.Href,
+			})
+		}
+		mu.Unlock()
+		cancel()
+	}
+	// scrape review
+	if len(Products) > 0 {
+		var reviewURL string
+		selectedProduct := Products[0]
+
+		tabCtx, cancel := chromedp.NewContext(ctx)
+		defer cancel()
+
+		err := chromedp.Run(tabCtx,
+			network.Enable(),
+			network.SetExtraHTTPHeaders(network.Headers(headers)),
+			chromedp.Navigate(selectedProduct.ProductURL),
+			chromedp.Sleep(3*time.Second),
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				js := `
+            (() => {
+                const reviewLinkElement = document.querySelector('a[href*="view-feedback"]');
+                return reviewLinkElement ? reviewLinkElement.href : '';
+            })()
+            `
+				return chromedp.Evaluate(js, &reviewURL).Do(ctx)
+			}),
+		)
+
+		if err != nil {
+			log.Printf("Error while extracting review URL from product %s: %v\n", selectedProduct.ProductURL, err)
+		} else if reviewURL != "" {
+			log.Printf("Successfully extracted review URL for store: %s\n", reviewURL)
+		} else {
+			log.Printf("No review URL found for product: %s\n", selectedProduct.ProductURL)
+		}
+	} else {
+		log.Println("No products available to extract review URL.")
 	}
 
-	for i, url := range categoryURLs {
-		fmt.Printf("Category %d: %s\n", i+1, url)
+	// Organizing Category Data
+	for _, url := range categoryURLs {
 		categoryID := extractCategoryID(url)
-		categoryProducts := append([]products{}, Product...)
+		categoryProducts := append([]Product{}, Products...)
 
-		allCategoryProducts = append(allCategoryProducts, CategoryProducts{
+		_ = append(allCategoryProducts, CategoryProducts{
 			CategoryID: categoryID,
 			Products:   categoryProducts,
 		})
 	}
 
-	for _, category := range allCategoryProducts {
-		fmt.Printf("Category ID: %s\n", category.CategoryID)
-		if len(category.Products) == 0 {
-			fmt.Println("\tNo products found for this category.")
-		} else {
-			for i, product := range category.Products {
-				fmt.Printf("\tProduct %d URL: %s, Product ID: %s\n", i+1, product.ProductURL, product.ProductID)
-			}
-		}
-		fmt.Println("Success Scraping Data")
-	}
+	// Displaying Scraped Data
+	// for i, category := range allCategoryProducts {
+	// 	fmt.Printf("Category %d:\n", i+1)
+	// 	fmt.Printf("\tCategory ID: %s\n", category.CategoryID)
+	// 	fmt.Printf("\tCategory Name: %s\n", category.CategoryName)
+
+	// 	if len(category.Products) == 0 {
+	// 		fmt.Println("\tNo products found for this category.")
+	// 	} else {
+	// 		fmt.Println("\tProducts:")
+	// 		for j, product := range category.Products {
+	// 			fmt.Printf("\t\tProduct %d:\n", j+1)
+	// 			fmt.Printf("\t\t\tProduct ID: %s\n", product.ProductID)
+	// 			fmt.Printf("\t\t\tProduct Title: %s\n", product.ProductTitle)
+	// 			fmt.Printf("\t\t\tProduct URL: %s\n", product.ProductURL)
+	// 			fmt.Printf("\t\t\tProduct Price: %s\n", product.ProductPrice)
+	// 			fmt.Printf("\t\t\tProduct Stock: %s\n", product.ProductStock)
+	// 			fmt.Printf("\t\t\tProduct Sold: %s\n", product.ProductSold)
+	// 			fmt.Printf("\t\t\tPositive Rating: %d\n", product.PositiveRating)
+	// 			fmt.Printf("\t\t\tNeutral Rating: %d\n", product.NeutralRating)
+	// 			fmt.Printf("\t\t\tNegative Rating: %d\n", product.NegativeRating)
+	// 		}
+	// 	}
+	// }
+	fmt.Println("Success Scraping Data")
 }
