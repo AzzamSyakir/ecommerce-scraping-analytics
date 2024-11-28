@@ -2,6 +2,9 @@ package controllers
 
 import (
 	"context"
+	"ecommerce-scraping-analytics/internal/config"
+	"ecommerce-scraping-analytics/internal/entity"
+	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
 	"log"
 	"math/rand"
@@ -14,29 +17,17 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-type ScrapingController struct{}
+type ScrapingController struct {
+	Producer *producer.ScrapingControllerProducer
+	Rabbitmq *config.RabbitMqConfig
+}
 
-func NewScrapingController() *ScrapingController {
-	scrapingController := &ScrapingController{}
+func NewScrapingController(rabbitMq *config.RabbitMqConfig, producer *producer.ScrapingControllerProducer) *ScrapingController {
+	scrapingController := &ScrapingController{
+		Producer: producer,
+		Rabbitmq: rabbitMq,
+	}
 	return scrapingController
-}
-
-type Product struct {
-	ProductID      string `json:"product_id"`
-	ProductTitle   string `json:"product_name"`
-	ProductURL     string `json:"product_url"`
-	ProductPrice   string `json:"price"`
-	ProductStock   string `json:"product_stock"`
-	ProductSold    string `json:"product_sold"`
-	PositiveRating int    `json:"positive_rating"`
-	NeutralRating  int    `json:"neutral_rating"`
-	NegativeRating int    `json:"negative_rating"`
-}
-
-type CategoryProducts struct {
-	CategoryID   string    `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Products     []Product `json:"products"`
 }
 
 func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
@@ -57,8 +48,16 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		}
 		return ""
 	}
+	extractCategoryName := func(url string) string {
+		re := regexp.MustCompile(`/c/[^/]+/([^/]+)`)
+		matches := re.FindStringSubmatch(url)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+		return ""
+	}
 	// get sellerCategory
-	var allCategoryProducts []CategoryProducts
+	var allCategoryProducts []entity.CategoryProducts
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 		"Accept-Encoding":           "gzip, deflate, br",
@@ -119,7 +118,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	// Scraping get list Product from each Categories
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var Products []Product
+	var Products []entity.Product
 	for _, url := range categoryURLs {
 		wg.Add(1)
 		go func(url string) {
@@ -159,7 +158,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 			mu.Lock()
 			for _, productResult := range categoryProductResults {
-				Products = append(Products, Product{
+				Products = append(Products, entity.Product{
 					ProductID:    extractProductID(productResult.Href),
 					ProductTitle: productResult.Title,
 					ProductURL:   productResult.Href,
@@ -222,7 +221,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 		mu.Lock()
 		for _, productResult := range productDetailsResults {
-			Products = append(Products, Product{
+			Products = append(Products, entity.Product{
 				ProductStock: productResult.Available,
 				ProductPrice: productResult.Price,
 				ProductSold:  productResult.Sold,
@@ -316,7 +315,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			log.Printf("Error while getting reviews for product %s: %v\n", product.ProductTitle, err)
 			continue
 		}
-		Products = append(Products, Product{
+		Products = append(Products, entity.Product{
 			PositiveRating: product.PositiveRating,
 			NegativeRating: product.NegativeRating,
 			NeutralRating:  product.NeutralRating,
@@ -326,13 +325,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	// Organizing Category Data
 	for _, url := range categoryURLs {
-		categoryID := extractCategoryID(url)
 
-		_ = append(allCategoryProducts, CategoryProducts{
-			CategoryID: categoryID,
-			Products:   Products,
+		allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
+			CategoryName: extractCategoryName(url),
+			CategoryID:   extractCategoryID(url),
+			Products:     Products,
 		})
 	}
+	scrapingcontroller.Producer.PublishScrapingData(scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 
 	fmt.Println("Success Scraping Data")
+
 }

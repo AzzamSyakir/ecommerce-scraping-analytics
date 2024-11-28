@@ -11,8 +11,8 @@ type ScrapingControllerConsumer struct {
 	Controller *controllers.ScrapingController
 }
 
-func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessagePopularProduct(rabbitMQConfig *config.RabbitMqConfig) {
-	queueName := "GetPopularProduct Queue"
+func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageSellerProduct(rabbitMQConfig *config.RabbitMqConfig) {
+	queueName := "GetSellerProduct Queue"
 	q, err := rabbitMQConfig.Channel.QueueDeclare(
 		queueName, // name
 		true,      // durable

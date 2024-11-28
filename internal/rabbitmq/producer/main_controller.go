@@ -14,11 +14,12 @@ func CreateNewMainControllerProducer() *MainControllerProducer {
 	return mainControllerProducer
 }
 
-func (*MainControllerProducer) CreateMessageGetPopularProducts(channelRabbitMQ *amqp.Channel, seller string) error {
-	queueName := "GetPopularProduct Queue"
-	payload := map[string]string{
+func (*MainControllerProducer) CreateMessageGetSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
+	queueName := "GetSellerProduct Queue"
+	payload := map[string]interface{}{
 		"message": "Start Scraping",
 		"seller":  seller,
+		"channel": channelRabbitMQ,
 	}
 	messageBody, err := json.Marshal(payload)
 	if err != nil {

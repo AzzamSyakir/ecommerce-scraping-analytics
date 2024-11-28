@@ -1,16 +1,19 @@
 package entity
 
-import (
-	"time"
+type Product struct {
+	ProductID      string `json:"product_id"`
+	ProductTitle   string `json:"product_name"`
+	ProductURL     string `json:"product_url"`
+	ProductPrice   string `json:"price"`
+	ProductStock   string `json:"product_stock"`
+	ProductSold    string `json:"product_sold"`
+	PositiveRating int    `json:"positive_rating"`
+	NeutralRating  int    `json:"neutral_rating"`
+	NegativeRating int    `json:"negative_rating"`
+}
 
-	"github.com/google/uuid"
-)
-
-type GetPopularProducts struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()" json:"id"`
-	CategoryName string    `gorm:"type:varchar(100);not null" json:"category_name"`
-	SalesVolume  int       `gorm:"not null" json:"sales_volume"`
-	TrendStatus  string    `gorm:"type:varchar(50);not null" json:"trend_status"`
-	AnalysisDate time.Time `gorm:"type:date;not null" json:"analysis_date"`
-	PriceAverage float64   `gorm:"type:numeric(10,2)" json:"price_average"`
+type CategoryProducts struct {
+	CategoryID   string    `json:"category_id"`
+	CategoryName string    `json:"category_name"`
+	Products     []Product `json:"products"`
 }
