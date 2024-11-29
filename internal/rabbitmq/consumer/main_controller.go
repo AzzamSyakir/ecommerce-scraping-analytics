@@ -12,10 +12,10 @@ type MainControllerConsumer struct {
 	Controller *controllers.MainController
 }
 
-func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumedataProductSellerScrape(rabbitMQConfig *config.RabbitMqConfig) ([]entity.CategoryProducts, error) {
-	queueName := "PublishSellerProduct Queue"
+func (MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig, responseChannel chan<- []entity.CategoryProducts) {
+	queueName := "ProductSellerResponseQueue"
 	q, err := rabbitMQConfig.Channel.QueueDeclare(
-		queueName, // name
+		queueName, // queue name
 		true,      // durable
 		false,     // delete when unused
 		false,     // exclusive
@@ -23,45 +23,53 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumedataProduct
 		nil,       // arguments
 	)
 	if err != nil {
-		fmt.Printf("Failed to declare a queue:%v", err)
+		fmt.Printf("Failed to declare a queue: %v", err)
+		return
 	}
-	expectedMessage := "Display Data"
+
 	msgs, err := rabbitMQConfig.Channel.Consume(
-		q.Name,              // Queue name
-		"Scraping Consumer", // Consumer tag
-		true,                // Auto-acknowledge
-		false,               // Exclusive
-		false,               // No-local
-		false,               // No-wait
-		nil,                 // Args
+		q.Name,             // Queue name
+		"ConsumerListener", // Consumer tag
+		true,               // Auto-acknowledge
+		false,              // Exclusive
+		false,              // No-local
+		false,              // No-wait
+		nil,                // Args
 	)
 	if err != nil {
 		fmt.Printf("Queue '%s' not available. Retrying in 5 seconds... Error: %v", queueName, err)
+		return
 	}
 
-	fmt.Printf("Consumer started for queue: %s", queueName)
+	fmt.Println("Consumer started for queue:", queueName)
 
 	for msg := range msgs {
-		var message map[string]interface{}
-		json.Unmarshal(msg.Body, &message)
-		if message["message"] == expectedMessage {
-			data, ok := message["data"].([]interface{})
+		var responseMessage map[string]interface{}
+		err := json.Unmarshal(msg.Body, &responseMessage)
+		if err != nil {
+			fmt.Printf("Failed to unmarshal response: %v\n", err)
+			continue
+		}
+
+		if responseMessage["message"] == "responseSuccess" {
+			data, ok := responseMessage["data"].([]interface{})
 			if !ok {
-				return nil, fmt.Errorf("invalid data format in message")
+				fmt.Println("Invalid data format")
+				continue
 			}
+
 			var responseData []entity.CategoryProducts
 			dataBytes, err := json.Marshal(data)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal data: %v", err)
+				fmt.Printf("Failed to marshal data: %v\n", err)
+				continue
 			}
 			err = json.Unmarshal(dataBytes, &responseData)
 			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal category products: %v", err)
+				fmt.Printf("Failed to unmarshal category products: %v\n", err)
+				continue
 			}
-			return responseData, nil
-		} else {
-			fmt.Printf("Message '%v' does not match expected message '%s'. Ignoring...", message, expectedMessage)
+			responseChannel <- responseData
 		}
 	}
-	return nil, fmt.Errorf("no valid message received")
 }

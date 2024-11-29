@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"ecommerce-scraping-analytics/internal/config"
+	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/model/response"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"net/http"
@@ -13,15 +14,16 @@ type MainController struct {
 	LogicController *LogicController
 	Rabbitmq        *config.RabbitMqConfig
 	Producer        *producer.MainControllerProducer
+	ResponseChannel chan []entity.CategoryProducts
 }
 
 func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, producer *producer.MainControllerProducer) *MainController {
-	mainController := &MainController{
+	return &MainController{
 		LogicController: logic,
 		Rabbitmq:        rabbitMq,
 		Producer:        producer,
+		ResponseChannel: make(chan []entity.CategoryProducts),
 	}
-	return mainController
 }
 
 func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) {
@@ -52,4 +54,12 @@ func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) 
 		response.NewResponse(c.Writer, result)
 	}
 	mainController.Producer.CreateMessageGetSellerProducts(rabbitMqchannel, seller)
+
+	responseData := <-mainController.ResponseChannel
+	result := &response.Response[interface{}]{
+		Code:    http.StatusOK,
+		Message: "Success",
+		Data:    responseData,
+	}
+	response.NewResponse(c.Writer, result)
 }

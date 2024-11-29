@@ -15,10 +15,10 @@ func CreateNewScrapingControllerProducer() *ScrapingControllerProducer {
 	return mainControllerProducer
 }
 
-func (*ScrapingControllerProducer) PublishScrapingData(channelRabbitMQ *amqp.Channel, data []entity.CategoryProducts) error {
-	queueName := "PublishSellerProduct Queue"
+func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbitMQ *amqp.Channel, data []entity.CategoryProducts) error {
+	queueName := "ProductSellerResponseQueue"
 	payload := map[string]interface{}{
-		"message": "Display Data",
+		"message": msg,
 		"data":    data,
 	}
 
@@ -39,5 +39,6 @@ func (*ScrapingControllerProducer) PublishScrapingData(channelRabbitMQ *amqp.Cha
 	); err != nil {
 		return fmt.Errorf("failed to publish message to queue: %w", err)
 	}
+	fmt.Println("publish scrape data success")
 	return nil
 }

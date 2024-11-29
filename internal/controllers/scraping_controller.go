@@ -230,98 +230,98 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		mu.Unlock()
 		cancel()
 	}
-	// scrape review
-	// get reviewUrl
-	if len(Products) == 0 {
-		log.Println("No products available to extract review URL.")
-		return
-	}
+	// // scrape review
+	// // get reviewUrl
+	// if len(Products) == 0 {
+	// 	log.Println("No products available to extract review URL.")
+	// 	return
+	// }
 
-	var reviewURL string
-	selectedProduct := Products[0]
+	// var reviewURL string
+	// selectedProduct := Products[0]
 
-	tabCtx, cancel := chromedp.NewContext(ctx)
-	defer cancel()
+	// tabCtx, cancel := chromedp.NewContext(ctx)
+	// defer cancel()
 
-	err = chromedp.Run(tabCtx,
-		network.Enable(),
-		network.SetExtraHTTPHeaders(network.Headers(headers)),
-		chromedp.Navigate(selectedProduct.ProductURL),
-		chromedp.Sleep(3*time.Second),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			js := `
-        (() => {
-            const reviewLinkElement = document.querySelector('a[href*="view-feedback"]');
-            return reviewLinkElement ? reviewLinkElement.href : '';
-        })()
-        `
-			return chromedp.Evaluate(js, &reviewURL).Do(ctx)
-		}),
-	)
+	// err = chromedp.Run(tabCtx,
+	// 	network.Enable(),
+	// 	network.SetExtraHTTPHeaders(network.Headers(headers)),
+	// 	chromedp.Navigate(selectedProduct.ProductURL),
+	// 	chromedp.Sleep(3*time.Second),
+	// 	chromedp.ActionFunc(func(ctx context.Context) error {
+	// 		js := `
+	//       (() => {
+	//           const reviewLinkElement = document.querySelector('a[href*="view-feedback"]');
+	//           return reviewLinkElement ? reviewLinkElement.href : '';
+	//       })()
+	//       `
+	// 		return chromedp.Evaluate(js, &reviewURL).Do(ctx)
+	// 	}),
+	// )
 
-	if err != nil {
-		log.Printf("Error while extracting review URL from product %s: %v\n", selectedProduct.ProductURL, err)
-		return
-	}
+	// if err != nil {
+	// 	log.Printf("Error while extracting review URL from product %s: %v\n", selectedProduct.ProductURL, err)
+	// 	return
+	// }
 
-	if reviewURL == "" {
-		log.Printf("No review URL found for product: %s\n", selectedProduct.ProductURL)
-		return
-	}
-	chromedp.Sleep(3 * time.Second)
-	// get review for each product
-	for _, product := range Products {
-		var reviewCounts struct {
-			Positive int `json:"positive"`
-			Neutral  int `json:"neutral"`
-			Negative int `json:"negative"`
-		}
+	// if reviewURL == "" {
+	// 	log.Printf("No review URL found for product: %s\n", selectedProduct.ProductURL)
+	// 	return
+	// }
+	// chromedp.Sleep(3 * time.Second)
+	// // get review for each product
+	// for _, product := range Products {
+	// 	var reviewCounts struct {
+	// 		Positive int `json:"positive"`
+	// 		Neutral  int `json:"neutral"`
+	// 		Negative int `json:"negative"`
+	// 	}
 
-		err := chromedp.Run(tabCtx,
-			network.Enable(),
-			network.SetExtraHTTPHeaders(network.Headers(headers)),
-			chromedp.Navigate(reviewURL),
-			chromedp.Sleep(3*time.Second),
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				productName := product.ProductTitle
-				js := `
-            (() => {
-                const table = document.querySelector('#comments > table');
-                if (!table) return { positive: 0, neutral: 0, negative: 0 };
+	// 	err := chromedp.Run(tabCtx,
+	// 		network.Enable(),
+	// 		network.SetExtraHTTPHeaders(network.Headers(headers)),
+	// 		chromedp.Navigate(reviewURL),
+	// 		chromedp.Sleep(3*time.Second),
+	// 		chromedp.ActionFunc(func(ctx context.Context) error {
+	// 			productName := product.ProductTitle
+	// 			js := `
+	//           (() => {
+	//               const table = document.querySelector('#comments > table');
+	//               if (!table) return { positive: 0, neutral: 0, negative: 0 };
 
-                const productNameElement = table.querySelector('tbody > tr:nth-child(2) > td:nth-child(3)');
-                const reviews = Array.from(table.querySelectorAll('tbody > tr:nth-child(2) > td:nth-child(1) > i'));
+	//               const productNameElement = table.querySelector('tbody > tr:nth-child(2) > td:nth-child(3)');
+	//               const reviews = Array.from(table.querySelectorAll('tbody > tr:nth-child(2) > td:nth-child(1) > i'));
 
-                if (!productNameElement || productNameElement.textContent.trim() !== "` + productName + `") {
-                    return { positive: 0, neutral: 0, negative: 0 };
-                }
+	//               if (!productNameElement || productNameElement.textContent.trim() !== "` + productName + `") {
+	//                   return { positive: 0, neutral: 0, negative: 0 };
+	//               }
 
-                let counts = { positive: 0, neutral: 0, negative: 0 };
-                reviews.forEach(review => {
-                    const reviewType = review.textContent.trim().toLowerCase();
-                    if (reviewType.includes('positive')) counts.positive++;
-                    else if (reviewType.includes('neutral')) counts.neutral++;
-                    else if (reviewType.includes('negative')) counts.negative++;
-                });
+	//               let counts = { positive: 0, neutral: 0, negative: 0 };
+	//               reviews.forEach(review => {
+	//                   const reviewType = review.textContent.trim().toLowerCase();
+	//                   if (reviewType.includes('positive')) counts.positive++;
+	//                   else if (reviewType.includes('neutral')) counts.neutral++;
+	//                   else if (reviewType.includes('negative')) counts.negative++;
+	//               });
 
-                return counts;
-            })()
-            `
-				return chromedp.Evaluate(js, &reviewCounts).Do(ctx)
-			}),
-		)
+	//               return counts;
+	//           })()
+	//           `
+	// 			return chromedp.Evaluate(js, &reviewCounts).Do(ctx)
+	// 		}),
+	// 	)
 
-		if err != nil {
-			log.Printf("Error while getting reviews for product %s: %v\n", product.ProductTitle, err)
-			continue
-		}
-		Products = append(Products, entity.Product{
-			PositiveRating: product.PositiveRating,
-			NegativeRating: product.NegativeRating,
-			NeutralRating:  product.NeutralRating,
-		})
+	// 	if err != nil {
+	// 		log.Printf("Error while getting reviews for product %s: %v\n", product.ProductTitle, err)
+	// 		continue
+	// 	}
+	// 	Products = append(Products, entity.Product{
+	// 		PositiveRating: product.PositiveRating,
+	// 		NegativeRating: product.NegativeRating,
+	// 		NeutralRating:  product.NeutralRating,
+	// 	})
 
-	}
+	// }
 
 	// Organizing Category Data
 	for _, url := range categoryURLs {
@@ -332,7 +332,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			Products:     Products,
 		})
 	}
-	scrapingcontroller.Producer.PublishScrapingData(scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
+	message := "responseSuccess"
+	scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 
 	fmt.Println("Success Scraping Data")
 
