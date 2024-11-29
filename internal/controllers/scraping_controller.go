@@ -336,5 +336,4 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 
 	fmt.Println("Success Scraping Data")
-
 }

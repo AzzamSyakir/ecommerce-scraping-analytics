@@ -3,7 +3,6 @@ package consumer
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/controllers"
-	"ecommerce-scraping-analytics/internal/entity"
 )
 
 type ConsumerEntrypoint struct {
@@ -23,7 +22,6 @@ func NewConsumerEntrypointInit(rabbitMQConfig *config.RabbitMqConfig, mainContro
 }
 
 func (consumerEntrypoint *ConsumerEntrypoint) ConsumerEntrypointStart() {
-	responseChannel := make(chan []entity.CategoryProducts)
 	go consumerEntrypoint.ScrapingConsumer.ConsumeMessageSellerProduct(consumerEntrypoint.RabbitMQ)
-	go consumerEntrypoint.MainConsumer.ConsumeSellerProductResponse(consumerEntrypoint.RabbitMQ, responseChannel)
+	go consumerEntrypoint.MainConsumer.ConsumeSellerProductResponse(consumerEntrypoint.RabbitMQ)
 }

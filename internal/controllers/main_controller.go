@@ -3,12 +3,17 @@ package controllers
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/entity"
-	"ecommerce-scraping-analytics/internal/model/response"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
+
+type Response[T any] struct {
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+	Data    T      `json:"data,omitempty"`
+}
 
 type MainController struct {
 	LogicController *LogicController
@@ -22,44 +27,56 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 		LogicController: logic,
 		Rabbitmq:        rabbitMq,
 		Producer:        producer,
-		ResponseChannel: make(chan []entity.CategoryProducts),
+		ResponseChannel: make(chan []entity.CategoryProducts, 1),
 	}
 }
 
 func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) {
 	seller := c.Param("seller")
 	RabbitMQConnection := mainController.Rabbitmq.Connection
-	rabbitMqchannel, err := RabbitMQConnection.Channel()
+	rabbitMqChannel, err := RabbitMQConnection.Channel()
 	if err != nil {
-		result := &response.Response[interface{}]{
+		result := &Response[interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}
-		response.NewResponse(c.Writer, result)
+		c.JSON(result.Code, result)
+		return
 	}
+	defer rabbitMqChannel.Close()
 
-	_, err = rabbitMqchannel.QueueDeclare(
-		"GetSellerProduct Queue", // queue name
-		true,                     // durable
-		false,                    // auto delete
-		false,                    // exclusive
-		false,                    // no wait
-		nil,                      // arguments
+	_, err = rabbitMqChannel.QueueDeclare(
+		"GetSellerProduct Queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
-		result := &response.Response[interface{}]{
+		result := &Response[interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}
-		response.NewResponse(c.Writer, result)
+		c.JSON(result.Code, result)
+		return
 	}
-	mainController.Producer.CreateMessageGetSellerProducts(rabbitMqchannel, seller)
 
+	mainController.Producer.CreateMessageGetSellerProducts(rabbitMqChannel, seller)
 	responseData := <-mainController.ResponseChannel
-	result := &response.Response[interface{}]{
-		Code:    http.StatusOK,
-		Message: "Success",
-		Data:    responseData,
+	if responseData != nil {
+		result := &Response[interface{}]{
+			Code:    http.StatusOK,
+			Message: "Success",
+			Data:    responseData,
+		}
+		c.JSON(result.Code, result)
+	} else {
+		result := &Response[interface{}]{
+			Code:    http.StatusBadRequest,
+			Message: "Failed to retrieve products",
+		}
+		c.JSON(result.Code, result)
+		return
 	}
-	response.NewResponse(c.Writer, result)
 }

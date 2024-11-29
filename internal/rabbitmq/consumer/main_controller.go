@@ -12,7 +12,7 @@ type MainControllerConsumer struct {
 	Controller *controllers.MainController
 }
 
-func (MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig, responseChannel chan<- []entity.CategoryProducts) {
+func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
 	queueName := "ProductSellerResponseQueue"
 	q, err := rabbitMQConfig.Channel.QueueDeclare(
 		queueName, // queue name
@@ -69,7 +69,7 @@ func (MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *confi
 				fmt.Printf("Failed to unmarshal category products: %v\n", err)
 				continue
 			}
-			responseChannel <- responseData
+			mainController.Controller.ResponseChannel <- responseData
 		}
 	}
 }
