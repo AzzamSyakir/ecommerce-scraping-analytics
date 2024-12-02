@@ -42,7 +42,6 @@ func (route *Route) RunServer() {
 		Addr:           fmt.Sprintf("%s:%s", os.Getenv("GATEWAY_APP_HOST"), os.Getenv("GATEWAY_APP_PORT")),
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
