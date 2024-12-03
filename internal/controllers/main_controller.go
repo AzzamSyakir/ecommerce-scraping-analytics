@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"ecommerce-scraping-analytics/internal/config"
-	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"net/http"
 
@@ -19,7 +18,7 @@ type MainController struct {
 	LogicController *LogicController
 	Rabbitmq        *config.RabbitMqConfig
 	Producer        *producer.MainControllerProducer
-	ResponseChannel chan []entity.CategoryProducts
+	ResponseChannel chan Response[interface{}]
 }
 
 func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, producer *producer.MainControllerProducer) *MainController {
@@ -27,7 +26,7 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 		LogicController: logic,
 		Rabbitmq:        rabbitMq,
 		Producer:        producer,
-		ResponseChannel: make(chan []entity.CategoryProducts, 1),
+		ResponseChannel: make(chan Response[interface{}], 1),
 	}
 }
 
@@ -64,17 +63,13 @@ func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) 
 
 	mainController.Producer.CreateMessageGetSellerProducts(rabbitMqChannel, seller)
 	responseData := <-mainController.ResponseChannel
-	if responseData != nil {
-		result := &Response[interface{}]{
-			Code:    http.StatusOK,
-			Message: "Success",
-			Data:    responseData,
-		}
-		c.JSON(result.Code, result)
+	var zeroResponse Response[interface{}]
+	if responseData != zeroResponse {
+		c.JSON(responseData.Code, responseData)
 	} else {
 		result := &Response[interface{}]{
 			Code:    http.StatusBadRequest,
-			Message: "Failed to retrieve products",
+			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}
 		c.JSON(result.Code, result)
 		return

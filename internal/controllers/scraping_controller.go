@@ -6,6 +6,7 @@ import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -144,14 +145,17 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						return chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
 					}),
 				)
-
-				if err == nil {
-					for _, productResult := range categoryProductResults {
-						productCh <- entity.Product{
-							ProductID:    extractProductID(productResult.Href),
-							ProductTitle: productResult.Title,
-							ProductURL:   productResult.Href,
-						}
+				if err != nil {
+					messageError := "responseError"
+					messageCombine := messageError + err.Error()
+					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+				}
+				for _, productResult := range categoryProductResults {
+					log.Fatal("scrape products from categories result : ", productResult)
+					productCh <- entity.Product{
+						ProductID:    extractProductID(productResult.Href),
+						ProductTitle: productResult.Title,
+						ProductURL:   productResult.Href,
 					}
 				}
 			}(url)
@@ -208,14 +212,16 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
 				)
-
-				if err == nil {
-					Products = append(Products, entity.Product{
-						ProductStock: productDetailsResults.Available,
-						ProductPrice: productDetailsResults.Price,
-						ProductSold:  productDetailsResults.Sold,
-					})
+				if err != nil {
+					messageError := "responseError"
+					messageCombine := messageError + err.Error()
+					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
 				}
+				Products = append(Products, entity.Product{
+					ProductStock: productDetailsResults.Available,
+					ProductPrice: productDetailsResults.Price,
+					ProductSold:  productDetailsResults.Sold,
+				})
 			}(product)
 		}
 		wg.Wait()
