@@ -55,7 +55,8 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 			data, ok := responseMessage["data"].([]interface{})
 			if !ok {
 				fmt.Println("Invalid data format")
-				continue
+				mainController.Controller.ResponseChannel <- nil
+				break
 			}
 
 			var responseData []entity.CategoryProducts
