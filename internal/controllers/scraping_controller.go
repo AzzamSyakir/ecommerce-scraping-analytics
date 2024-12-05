@@ -6,7 +6,6 @@ import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -64,7 +63,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		"Connection":                "keep-alive",
 		"Upgrade-Insecure-Requests": "1",
 		"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
-		"Referer":                   "https://www.etsy.com",
 	}
 
 	// Initialize Chromedp context
@@ -146,12 +144,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					}),
 				)
 				if err != nil {
-					messageError := "responseError "
+					messageError := "responseError"
 					messageCombine := messageError + err.Error()
+					fmt.Println("error di scrape list produk dari kategori")
 					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+					cancel()
 				}
 				for _, productResult := range categoryProductResults {
-					log.Fatal("scrape products from categories result : ", productResult)
 					productCh <- entity.Product{
 						ProductID:    extractProductID(productResult.Href),
 						ProductTitle: productResult.Title,
@@ -214,8 +213,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				)
 				if err != nil {
 					messageError := "responseError"
+					fmt.Println("error di scrape detail produk")
 					messageCombine := messageError + err.Error()
 					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+					cancel()
 				}
 				Products = append(Products, entity.Product{
 					ProductStock: productDetailsResults.Available,
