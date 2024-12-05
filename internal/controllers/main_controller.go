@@ -35,7 +35,7 @@ func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) 
 	RabbitMQConnection := mainController.Rabbitmq.Connection
 	rabbitMqChannel, err := RabbitMQConnection.Channel()
 	if err != nil {
-		result := &Response[interface{}]{
+		result := &Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}
@@ -53,7 +53,7 @@ func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) 
 		nil,
 	)
 	if err != nil {
-		result := &Response[interface{}]{
+		result := &Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}
@@ -63,11 +63,11 @@ func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) 
 
 	mainController.Producer.CreateMessageGetSellerProducts(rabbitMqChannel, seller)
 	responseData := <-mainController.ResponseChannel
-	var zeroResponse Response[interface{}]
-	if responseData != zeroResponse {
+	var zeroResponse Response[map[string]interface{}]
+	if responseData.Code != zeroResponse.Code {
 		c.JSON(responseData.Code, responseData)
 	} else {
-		result := &Response[interface{}]{
+		result := &Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}

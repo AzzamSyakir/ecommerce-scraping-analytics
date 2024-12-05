@@ -12,6 +12,10 @@ import (
 type MainControllerConsumer struct {
 	Controller *controllers.MainController
 }
+type RabbitMQPayload struct {
+	Message string                    `json:"message"`
+	Data    []entity.CategoryProducts `json:"data"`
+}
 
 func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
 	queueName := "ProductSellerResponseQueue"
@@ -45,40 +49,40 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 	fmt.Println("Consumer started for queue:", queueName)
 
 	for msg := range msgs {
-		var responseMessage controllers.Response[interface{}]
+		var payload RabbitMQPayload
 
 		// Parse JSON message
-		err := json.Unmarshal(msg.Body, &responseMessage)
+		err := json.Unmarshal(msg.Body, &payload)
 		if err != nil {
 			fmt.Printf("Failed to unmarshal message: %v\n", err)
 			continue
 		}
 
 		// Handle error response
-		if strings.HasPrefix(responseMessage.Message, "responseError") {
-			errorMessage, ok := responseMessage.Data.(string)
-			if !ok || errorMessage == "" {
-				fmt.Println("Invalid or empty error message in response")
+		if strings.HasPrefix(payload.Message, "responseError") {
+			errorMessage := strings.TrimPrefix(payload.Message, "responseError")
+			errorMessage = strings.TrimSpace(errorMessage)
+
+			if errorMessage == "" {
 				mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
 					Code:    500,
-					Message: "Invalid error response",
-					Data:    nil,
+					Message: "Error message is empty after 'responseError'",
+					Data:    payload.Data,
 				}
 				continue
 			}
 
-			fmt.Printf("Received error message: %s\n", errorMessage)
 			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
-				Code:    500,
-				Message: errorMessage,
-				Data:    nil,
+				Code:    400,
+				Message: fmt.Sprintf("Error occurred: %s", errorMessage),
+				Data:    payload.Data,
 			}
 			continue
 		}
 
 		// Handle success response
-		if responseMessage.Message == "responseSuccess" {
-			dataBytes, err := json.Marshal(responseMessage.Data)
+		if payload.Message == "responseSuccess" {
+			dataBytes, err := json.Marshal(payload.Data)
 			if err != nil {
 				fmt.Printf("Failed to marshal response data: %v\n", err)
 				continue
@@ -97,7 +101,6 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				Data:    responseData,
 			}
 		} else {
-			fmt.Println("Unknown message type:", responseMessage.Message)
 			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
 				Code:    400,
 				Message: "Unknown message type",

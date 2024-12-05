@@ -146,7 +146,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					}),
 				)
 				if err != nil {
-					messageError := "responseError"
+					messageError := "responseError "
 					messageCombine := messageError + err.Error()
 					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
 				}
@@ -234,7 +234,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				Products:     Products,
 			})
 		}
-		fmt.Println("data", allCategoryProducts)
 
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
