@@ -66,9 +66,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	}
 
 	// Initialize Chromedp context
-	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("headless", false))...)
-	defer cancel()
-	ctx, cancel = chromedp.NewContext(ctx)
+	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
 
 	// Channel definitions
