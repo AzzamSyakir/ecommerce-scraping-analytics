@@ -123,12 +123,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				pool <- struct{}{}
 				defer func() { <-pool }()
 
+				productCategoriesCtx, cancel := chromedp.NewContext(ctx)
+				defer cancel()
+
 				var categoryProductResults []struct {
 					Href  string `json:"href"`
 					Title string `json:"title"`
 				}
 
-				err := chromedp.Run(ctx,
+				err := chromedp.Run(productCategoriesCtx,
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(url),
@@ -175,6 +178,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				defer wg.Done()
 				pool <- struct{}{}
 				defer func() { <-pool }()
+				productDetailCtx, cancel := chromedp.NewContext(ctx)
+				defer cancel()
 
 				productUrl := product.ProductURL
 				if strings.Contains(product.ProductURL, ".ecrater.com") {
@@ -190,7 +195,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					Price     string `json:"price"`
 				}
 
-				err := chromedp.Run(ctx,
+				err := chromedp.Run(productDetailCtx,
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
