@@ -69,8 +69,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	ctx, cancel := chromedp.NewExecAllocator(
 		context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
 			chromedp.DisableGPU,
+			chromedp.NoSandbox,
 		)...,
 	)
 	defer cancel()
@@ -83,9 +83,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	categoryCh := make(chan string)
 	productCh := make(chan entity.Product)
 	done := make(chan bool)
-	categoryPool := make(chan struct{}, 10)
-	productListpool := make(chan struct{}, 10)
-	productDetailPool := make(chan struct{}, 10)
+	categoryPool := make(chan struct{}, 100)
+	productListpool := make(chan struct{}, 100)
+	productDetailPool := make(chan struct{}, 100)
 
 	//Scrape Categories
 	var categoryURLs []string
