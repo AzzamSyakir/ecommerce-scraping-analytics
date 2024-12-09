@@ -6,9 +6,11 @@ import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -25,6 +27,10 @@ func NewScrapingController(rabbitMq *config.RabbitMqConfig, producer *producer.S
 		Rabbitmq: rabbitMq,
 	}
 	return scrapingController
+}
+func logDuration(start time.Time, name string) {
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", name, elapsed)
 }
 
 func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
@@ -90,6 +96,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	//Scrape Categories
 	var categoryURLs []string
 	go func() {
+		defer logDuration(time.Now(), "Scrape Categories")
 		defer close(categoryCh)
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
@@ -130,6 +137,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	//Scrape Products from Categories
 	go func() {
+		defer logDuration(time.Now(), "Scrape Products from Categories")
 		defer close(productCh)
 		var wg sync.WaitGroup
 
@@ -144,8 +152,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				defer cancel()
 
 				var categoryProductResults []struct {
-					Href  string `json:"href"`
-					Title string `json:"title"`
+					Href string `json:"href"`
 				}
 
 				err := chromedp.Run(productCategoriesCtx,
@@ -158,7 +165,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						js := `
 					(() => {
 						return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
-							.map(a => ({ href: a.href, title: a.title }));
+							.map(a => ({ href: a.href}));
 					})()
 					`
 						return chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
@@ -172,9 +179,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 				for _, productResult := range categoryProductResults {
 					productCh <- entity.Product{
-						ProductID:    extractProductID(productResult.Href),
-						ProductTitle: productResult.Title,
-						ProductURL:   productResult.Href,
+						ProductID:  extractProductID(productResult.Href),
+						ProductURL: productResult.Href,
 					}
 				}
 			}(url)
@@ -184,6 +190,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	//Scrape Product Details
 	go func() {
+		fmt.Println("tes mulai scrape detail product")
+		defer fmt.Println("tes selesai scrape detail product")
+		defer logDuration(time.Now(), "Scrape Product Details")
 		var wg sync.WaitGroup
 		defer close(done)
 		var allCategoryProducts []entity.CategoryProducts
@@ -207,6 +216,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 
 				var productDetailsResults struct {
+					Title     string `json:"title"`
 					Available string `json:"available"`
 					Sold      string `json:"sold"`
 					Price     string `json:"price"`
@@ -222,10 +232,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 							(() => {
 									const detailsElement = document.querySelector('#product-quantity');
 									const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+									const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
 									const price = priceRaw ? '$' + priceRaw : '';
 									const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
 									const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-									return { available, sold, price };
+									return { title, available, sold, price };
 							})();
 							`
 
@@ -239,6 +250,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					cancel()
 				}
 				Products = append(Products, entity.Product{
+					ProductID:    extractProductID(productUrl),
+					ProductTitle: productDetailsResults.Title,
+					ProductURL:   productUrl,
 					ProductStock: productDetailsResults.Available,
 					ProductPrice: productDetailsResults.Price,
 					ProductSold:  productDetailsResults.Sold,
