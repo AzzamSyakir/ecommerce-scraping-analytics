@@ -6,11 +6,9 @@ import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -28,11 +26,6 @@ func NewScrapingController(rabbitMq *config.RabbitMqConfig, producer *producer.S
 	}
 	return scrapingController
 }
-func logDuration(start time.Time, name string) {
-	elapsed := time.Since(start)
-	log.Printf("%s took %s", name, elapsed)
-}
-
 func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
 	// Extract functions for category and product details
 	extractCategoryID := func(url string) string {
@@ -89,14 +82,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	categoryCh := make(chan string)
 	productCh := make(chan entity.Product)
 	done := make(chan bool)
-	categoryPool := make(chan struct{}, 100)
-	productListpool := make(chan struct{}, 100)
-	productDetailPool := make(chan struct{}, 100)
+	categoryPool := make(chan struct{}, 20)
+	productListpool := make(chan struct{}, 20)
+	productDetailPool := make(chan struct{}, 20)
 
 	//Scrape Categories
 	var categoryURLs []string
 	go func() {
-		defer logDuration(time.Now(), "Scrape Categories")
 		defer close(categoryCh)
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
@@ -105,6 +97,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 		err := chromedp.Run(browserCtx,
 			network.SetCacheDisabled(false),
+			network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 			network.Enable(),
 			network.SetExtraHTTPHeaders(network.Headers(headers)),
 			chromedp.Navigate(sellerCategory),
@@ -137,7 +130,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	//Scrape Products from Categories
 	go func() {
-		defer logDuration(time.Now(), "Scrape Products from Categories")
 		defer close(productCh)
 		var wg sync.WaitGroup
 
@@ -157,6 +149,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 				err := chromedp.Run(productCategoriesCtx,
 					network.SetCacheDisabled(false),
+					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(url),
@@ -190,9 +183,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	//Scrape Product Details
 	go func() {
-		fmt.Println("tes mulai scrape detail product")
-		defer fmt.Println("tes selesai scrape detail product")
-		defer logDuration(time.Now(), "Scrape Product Details")
 		var wg sync.WaitGroup
 		defer close(done)
 		var allCategoryProducts []entity.CategoryProducts
@@ -223,22 +213,24 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 
 				err := chromedp.Run(productDetailCtx,
+					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 					network.SetCacheDisabled(false),
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
+					chromedp.WaitVisible("#product-title > h1"),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						js := `
-							(() => {
-									const detailsElement = document.querySelector('#product-quantity');
-									const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-									const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-									const price = priceRaw ? '$' + priceRaw : '';
-									const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-									const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-									return { title, available, sold, price };
-							})();
-							`
+						(() => {
+								const detailsElement = document.querySelector('#product-quantity');
+								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+								const price = priceRaw ? '$' + priceRaw : '';
+								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								return { title, available, sold, price };
+						})();
+				`
 
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
