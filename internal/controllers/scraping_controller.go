@@ -6,11 +6,9 @@ import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -27,10 +25,6 @@ func NewScrapingController(rabbitMq *config.RabbitMqConfig, producer *producer.S
 		Rabbitmq: rabbitMq,
 	}
 	return scrapingController
-}
-func logDuration(start time.Time, name string) {
-	elapsed := time.Since(start)
-	log.Printf("%s took %s", name, elapsed)
 }
 
 func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
@@ -86,17 +80,17 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	defer cancelBrowser()
 
 	// Channel definitions
-	categoryCh := make(chan string, 100)
-	productCh := make(chan entity.Product, 100)
+	const maxWorkers = 100
+	categoryCh := make(chan string, maxWorkers)
+	productCh := make(chan entity.Product, maxWorkers)
 	done := make(chan bool)
-	categoryPool := make(chan struct{}, 100)
-	productListpool := make(chan struct{}, 100)
-	productDetailPool := make(chan struct{}, 100)
+	categoryPool := make(chan struct{}, maxWorkers)
+	productListPool := make(chan struct{}, maxWorkers)
+	productDetailPool := make(chan struct{}, maxWorkers)
 
 	// Scrape Categories
 	var categoryURLs []string
 	go func() {
-		defer logDuration(time.Now(), "Scrape Categories")
 		defer close(categoryCh)
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
@@ -139,7 +133,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	// Scrape Products from Categories
 	go func() {
-		defer logDuration(time.Now(), "Scrape Products from Categories")
 		defer close(productCh)
 		var wg sync.WaitGroup
 
@@ -147,8 +140,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			wg.Add(1)
 			go func(url string) {
 				defer wg.Done()
-				productListpool <- struct{}{}
-				defer func() { <-productListpool }()
+				productListPool <- struct{}{}
+				defer func() { <-productListPool }()
 
 				productCategoriesCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
@@ -192,7 +185,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	// Scrape Product Details
 	go func() {
-		defer logDuration(time.Now(), "Scrape Product Details")
 		var wg sync.WaitGroup
 		defer close(done)
 		var allCategoryProducts []entity.CategoryProducts
