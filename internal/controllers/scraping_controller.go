@@ -69,6 +69,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	ctx, cancel := chromedp.NewExecAllocator(
 		context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", false),
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
 		)...,
@@ -83,15 +84,19 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	const maxWorkers = 100
 	categoryCh := make(chan string, maxWorkers)
 	productCh := make(chan entity.Product, maxWorkers)
-	done := make(chan bool)
+	done := make(chan bool, maxWorkers)
 	categoryPool := make(chan struct{}, maxWorkers)
 	productListPool := make(chan struct{}, maxWorkers)
 	productDetailPool := make(chan struct{}, maxWorkers)
 
+	// initialize wait groups
+	var wg sync.WaitGroup
+
 	// Scrape Categories
 	var categoryURLs []string
+	wg.Add(1)
 	go func() {
-		defer close(categoryCh)
+		defer wg.Done()
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
 		baseUrl := "http://www.%s.ecrater.com%s"
@@ -125,17 +130,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
 			cancel()
 		}
-		// Kirim URL kategori yang ditemukan ke channel untuk diproses secara langsung
 		for _, url := range categoryURLs {
 			categoryCh <- url
 		}
 	}()
 
 	// Scrape Products from Categories
+	wg.Add(1)
 	go func() {
-		defer close(productCh)
-		var wg sync.WaitGroup
-
+		defer wg.Done()
 		for url := range categoryCh {
 			wg.Add(1)
 			go func(url string) {
@@ -180,13 +183,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 			}(url)
 		}
-		wg.Wait()
 	}()
 
 	// Scrape Product Details
+	wg.Add(1)
 	go func() {
-		var wg sync.WaitGroup
-		defer close(done)
+		defer wg.Done()
+
 		var allCategoryProducts []entity.CategoryProducts
 		var Products []entity.Product
 
@@ -224,16 +227,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						js := `
                     (() => {
-                            const detailsElement = document.querySelector('#product-quantity');
-                            const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-                            const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-                            const price = priceRaw ? '$' + priceRaw : '';
-                            const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-                            const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-                            return { title, available, sold, price };
+                        const detailsElement = document.querySelector('#product-quantity');
+                        const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+                        const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+                        const price = priceRaw ? '$' + priceRaw : '';
+                        const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+                        const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+                        return { title, available, sold, price };
                     })();
                     `
-
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
 				)
@@ -244,20 +246,20 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					cancel()
 				}
 
+				var mu sync.Mutex
+				mu.Lock()
 				Products = append(Products, entity.Product{
-					ProductID:    extractProductID(productUrl),
+					ProductID:    extractProductID(product.ProductURL),
 					ProductTitle: productDetailsResults.Title,
-					ProductURL:   productUrl,
+					ProductURL:   product.ProductURL,
 					ProductStock: productDetailsResults.Available,
 					ProductPrice: productDetailsResults.Price,
 					ProductSold:  productDetailsResults.Sold,
 				})
+				mu.Unlock()
 			}(product)
 		}
 
-		wg.Wait()
-
-		// Collect and Send Final Data
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
@@ -269,6 +271,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 	}()
+	// wait goroutines to finish and close channel
+	wg.Wait()
+	close(categoryCh)
+	close(productCh)
+	close(done)
 
 	<-done
 }
