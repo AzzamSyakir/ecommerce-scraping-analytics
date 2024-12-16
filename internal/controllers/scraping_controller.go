@@ -93,11 +93,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	// handling error
 	go func() {
-		err := <-errCh
-		messageError := "responseError"
-		messageCombine := messageError + ": " + err.Error()
-		scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-		cancelAll()
+		for err := range errCh {
+			messageError := "responseError"
+			messageCombine := messageError + ": " + err.Error()
+			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+			cancelAll()
+		}
 	}()
 
 	//Scrape Categories
@@ -190,11 +191,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	//Scrape Product Details
 	go func() {
 		var wg sync.WaitGroup
-		defer func() {
-			wg.Wait()
-			close(done)
-			close(productDetailPool)
-		}()
 		var allCategoryProducts []entity.CategoryProducts
 		var Products []entity.Product
 
@@ -260,6 +256,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			}(product)
 		}
 		wg.Wait()
+		// close channel and pool
+		close(done)
+		close(productDetailPool)
+		close(errCh)
 		//Collect and Send Final Data
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
