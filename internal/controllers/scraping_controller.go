@@ -69,9 +69,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	ctx, cancel := chromedp.NewExecAllocator(
 		context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", false),
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
+			chromedp.Flag("headless", false),
 		)...,
 	)
 	defer cancel()
@@ -79,29 +79,36 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	// Create a browser context from the allocator
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
+	_, cancelAll := context.WithCancel(ctx)
+	defer cancelAll()
 
-	// Channel definitions
-	const maxWorkers = 100
-	categoryCh := make(chan string, maxWorkers)
-	productCh := make(chan entity.Product, maxWorkers)
-	done := make(chan bool, maxWorkers)
-	categoryPool := make(chan struct{}, maxWorkers)
-	productListPool := make(chan struct{}, maxWorkers)
-	productDetailPool := make(chan struct{}, maxWorkers)
+	// Channel and pool definitions
+	categoryCh := make(chan string)
+	productCh := make(chan entity.Product)
+	done := make(chan bool)
+	categoryPool := make(chan struct{}, 20)
+	productListpool := make(chan struct{}, 20)
+	productDetailPool := make(chan struct{}, 20)
+	errCh := make(chan error, 1)
 
-	// initialize wait groups
-	var wg sync.WaitGroup
-
-	// Scrape Categories
-	var categoryURLs []string
-	wg.Add(1)
+	// handling error
 	go func() {
-		defer wg.Done()
+		err := <-errCh
+		messageError := "responseError"
+		messageCombine := messageError + ": " + err.Error()
+		scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+		cancelAll()
+	}()
+
+	//Scrape Categories
+	var categoryURLs []string
+	go func() {
+		defer close(categoryPool)
+		defer close(categoryCh)
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
 		baseUrl := "http://www.%s.ecrater.com%s"
 		sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
-
 		err := chromedp.Run(browserCtx,
 			network.SetCacheDisabled(false),
 			network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
@@ -109,42 +116,38 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			network.SetExtraHTTPHeaders(network.Headers(headers)),
 			chromedp.Navigate(sellerCategory),
 			chromedp.ActionFunc(func(ctx context.Context) error {
-				var hrefs []string
 				js := `
 			(() => {
 				return Array.from(document.querySelectorAll('section.clearfix a[href]'))
 								.map(link => link.href);
 			})()
 			`
-				err := chromedp.Evaluate(js, &hrefs).Do(ctx)
-				if err != nil {
-					return err
-				}
-				categoryURLs = append(categoryURLs, hrefs...)
-				return nil
+				return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
 			}),
 		)
 		if err != nil {
-			messageError := "responseError"
-			messageCombine := messageError + err.Error()
-			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-			cancel()
+			errCh <- err
+			return
 		}
 		for _, url := range categoryURLs {
 			categoryCh <- url
 		}
 	}()
-
-	// Scrape Products from Categories
-	wg.Add(1)
+	//Scrape Products from Categories
 	go func() {
-		defer wg.Done()
+		var wg sync.WaitGroup
+		defer func() {
+			wg.Wait()
+			close(productCh)
+			close(productListpool)
+		}()
+
 		for url := range categoryCh {
 			wg.Add(1)
 			go func(url string) {
 				defer wg.Done()
-				productListPool <- struct{}{}
-				defer func() { <-productListPool }()
+				productListpool <- struct{}{}
+				defer func() { <-productListpool }()
 
 				productCategoriesCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
@@ -159,6 +162,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(url),
+					chromedp.WaitReady("#product-list-grid"),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						js := `
 					(() => {
@@ -170,10 +174,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					}),
 				)
 				if err != nil {
-					messageError := "responseError"
-					messageCombine := messageError + err.Error()
-					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-					cancel()
+					errCh <- err
+					return
 				}
 				for _, productResult := range categoryProductResults {
 					productCh <- entity.Product{
@@ -185,11 +187,14 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		}
 	}()
 
-	// Scrape Product Details
-	wg.Add(1)
+	//Scrape Product Details
 	go func() {
-		defer wg.Done()
-
+		var wg sync.WaitGroup
+		defer func() {
+			wg.Wait()
+			close(done)
+			close(productDetailPool)
+		}()
 		var allCategoryProducts []entity.CategoryProducts
 		var Products []entity.Product
 
@@ -219,47 +224,43 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 				err := chromedp.Run(productDetailCtx,
 					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-					network.SetCacheDisabled(true),
+					network.SetCacheDisabled(false),
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
-					chromedp.WaitVisible("#product-title > h1", chromedp.ByQuery),
+					chromedp.WaitVisible("#product-title > h1"),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						js := `
-                    (() => {
-                        const detailsElement = document.querySelector('#product-quantity');
-                        const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-                        const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-                        const price = priceRaw ? '$' + priceRaw : '';
-                        const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-                        const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-                        return { title, available, sold, price };
-                    })();
-                    `
+						(() => {
+								const detailsElement = document.querySelector('#product-quantity');
+								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+								const price = priceRaw ? '$' + priceRaw : '';
+								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								return { title, available, sold, price };
+						})();
+				`
+
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
 				)
 				if err != nil {
-					messageError := "responseError"
-					messageCombine := messageError + err.Error()
-					scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-					cancel()
+					errCh <- err
+					return
 				}
-
-				var mu sync.Mutex
-				mu.Lock()
 				Products = append(Products, entity.Product{
-					ProductID:    extractProductID(product.ProductURL),
+					ProductID:    extractProductID(productUrl),
 					ProductTitle: productDetailsResults.Title,
-					ProductURL:   product.ProductURL,
+					ProductURL:   productUrl,
 					ProductStock: productDetailsResults.Available,
 					ProductPrice: productDetailsResults.Price,
 					ProductSold:  productDetailsResults.Sold,
 				})
-				mu.Unlock()
 			}(product)
 		}
-
+		wg.Wait()
+		//Collect and Send Final Data
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
@@ -267,15 +268,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				Products:     Products,
 			})
 		}
-
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 	}()
-	// wait goroutines to finish and close channel
-	wg.Wait()
-	close(categoryCh)
-	close(productCh)
-	close(done)
 
 	<-done
 }
