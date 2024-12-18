@@ -39,6 +39,5 @@ func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbit
 	); err != nil {
 		return fmt.Errorf("failed to publish message to queue: %w", err)
 	}
-	fmt.Println("publish scrape data finished")
 	return nil
 }

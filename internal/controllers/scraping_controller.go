@@ -79,9 +79,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	// Create a browser context from the allocator
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
-	_, cancelAll := context.WithCancel(ctx)
-	defer cancelAll()
-
 	// Channel and pool definitions
 	categoryCh := make(chan string)
 	productCh := make(chan entity.Product)
@@ -94,10 +91,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	// handling error
 	go func() {
 		for err := range errCh {
+			cancelBrowser()
 			messageError := "responseError"
 			messageCombine := messageError + ": " + err.Error()
 			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-			cancelAll()
 		}
 	}()
 
@@ -190,9 +187,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 
 	//Scrape Product Details
 	go func() {
-		var wg sync.WaitGroup
-		var allCategoryProducts []entity.CategoryProducts
-		var Products []entity.Product
+		var (
+			wg                  sync.WaitGroup
+			mu                  sync.Mutex
+			allCategoryProducts []entity.CategoryProducts
+			products            []entity.Product
+			failedURLs          []string
+		)
 
 		for product := range productCh {
 			wg.Add(1)
@@ -200,6 +201,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				defer wg.Done()
 				productDetailPool <- struct{}{}
 				defer func() { <-productDetailPool }()
+
 				productDetailCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
 
@@ -224,19 +226,38 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
-					chromedp.WaitVisible("#product-title > h1"),
+					chromedp.WaitVisible("body", chromedp.ByQuery),
 					chromedp.ActionFunc(func(ctx context.Context) error {
+						checkService := `
+											(() => {
+													const h1Element = document.querySelector('body > h1');
+													return h1Element ? h1Element.textContent.trim() : '';
+											})();
+									`
+
+						var pageTitle string
+						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
+							return err
+						}
+
+						if pageTitle == "Service Temporarily Unavailable" {
+							mu.Lock()
+							failedURLs = append(failedURLs, productUrl)
+							mu.Unlock()
+							return nil
+						}
+
 						js := `
-						(() => {
-								const detailsElement = document.querySelector('#product-quantity');
-								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-								const price = priceRaw ? '$' + priceRaw : '';
-								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-								return { title, available, sold, price };
-						})();
-				`
+											(() => {
+													const detailsElement = document.querySelector('#product-quantity');
+													const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+													const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+													const price = priceRaw ? '$' + priceRaw : '';
+													const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+													const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+													return { title, available, sold, price };
+											})();
+									`
 
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
@@ -245,7 +266,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					errCh <- err
 					return
 				}
-				Products = append(Products, entity.Product{
+
+				mu.Lock()
+				products = append(products, entity.Product{
 					ProductID:    extractProductID(productUrl),
 					ProductTitle: productDetailsResults.Title,
 					ProductURL:   productUrl,
@@ -253,19 +276,67 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					ProductPrice: productDetailsResults.Price,
 					ProductSold:  productDetailsResults.Sold,
 				})
+				mu.Unlock()
 			}(product)
 		}
 		wg.Wait()
-		// close channel and pool
+
+		// retry failed page
+		for _, productUrl := range failedURLs {
+			productDetailPool <- struct{}{}
+			defer func() { <-productDetailPool }()
+			fmt.Println("failedUrls ", productUrl)
+			err := chromedp.Run(browserCtx,
+				chromedp.Navigate(productUrl),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					var productDetailsResults struct {
+						Title     string `json:"title"`
+						Available string `json:"available"`
+						Sold      string `json:"sold"`
+						Price     string `json:"price"`
+					}
+					js := `
+			(() => {
+				const detailsElement = document.querySelector('#product-quantity');
+				const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+				const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+				const price = priceRaw ? '$' + priceRaw : '';
+				const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+				const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+				return { title, available, sold, price };
+			})();
+			`
+					err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
+					if err != nil {
+						return err
+					}
+
+					products = append(products, entity.Product{
+						ProductID:    extractProductID(productUrl),
+						ProductTitle: productDetailsResults.Title,
+						ProductURL:   productUrl,
+						ProductStock: productDetailsResults.Available,
+						ProductPrice: productDetailsResults.Price,
+						ProductSold:  productDetailsResults.Sold,
+					})
+					return nil
+				}),
+			)
+			if err != nil {
+				errCh <- err
+				continue
+			}
+		}
+		//  close channel and pool
 		close(done)
 		close(productDetailPool)
 		close(errCh)
-		//Collect and Send Final Data
+
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
 				CategoryID:   extractCategoryID(url),
-				Products:     Products,
+				Products:     products,
 			})
 		}
 		message := "responseSuccess"
