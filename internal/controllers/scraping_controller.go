@@ -80,21 +80,31 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
 	// Channel and pool definitions
+	maxWorker := 100
 	categoryCh := make(chan string)
 	productCh := make(chan entity.Product)
 	done := make(chan bool)
-	categoryPool := make(chan struct{}, 20)
-	productListpool := make(chan struct{}, 20)
-	productDetailPool := make(chan struct{}, 20)
+	categoryPool := make(chan struct{}, maxWorker)
+	productListpool := make(chan struct{}, maxWorker)
+	productDetailPool := make(chan struct{}, maxWorker)
+	retryCh := make(chan string, maxWorker)
+	retryPool := make(chan struct{}, maxWorker)
 	errCh := make(chan error, 1)
 
 	// handling error
+	var once sync.Once
 	go func() {
 		for err := range errCh {
-			cancelBrowser()
 			messageError := "responseError"
 			messageCombine := messageError + ": " + err.Error()
 			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+			once.Do(func() {
+				cancelBrowser()
+				close(retryCh)
+				close(done)
+				close(productDetailPool)
+				close(errCh)
+			})
 		}
 	}()
 
@@ -185,16 +195,16 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		}
 	}()
 
-	//Scrape Product Details
+	// Scrape Product Details
 	go func() {
 		var (
 			wg                  sync.WaitGroup
+			retryWg             sync.WaitGroup
 			mu                  sync.Mutex
 			allCategoryProducts []entity.CategoryProducts
 			products            []entity.Product
-			failedURLs          []string
 		)
-
+		// scrape page productDetail
 		for product := range productCh {
 			wg.Add(1)
 			go func(product entity.Product) {
@@ -220,6 +230,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					Price     string `json:"price"`
 				}
 
+				// Scraping page productDetail
 				err := chromedp.Run(productDetailCtx,
 					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 					network.SetCacheDisabled(false),
@@ -229,11 +240,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					chromedp.WaitVisible("body", chromedp.ByQuery),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						checkService := `
-											(() => {
-													const h1Element = document.querySelector('body > h1');
-													return h1Element ? h1Element.textContent.trim() : '';
-											})();
-									`
+						(() => {
+							const h1Element = document.querySelector('body > h1');
+							return h1Element ? h1Element.textContent.trim() : '';
+						})();
+					`
 
 						var pageTitle string
 						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
@@ -241,23 +252,21 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						}
 
 						if pageTitle == "Service Temporarily Unavailable" {
-							mu.Lock()
-							failedURLs = append(failedURLs, productUrl)
-							mu.Unlock()
+							retryCh <- productUrl
 							return nil
 						}
 
 						js := `
-											(() => {
-													const detailsElement = document.querySelector('#product-quantity');
-													const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-													const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-													const price = priceRaw ? '$' + priceRaw : '';
-													const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-													const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-													return { title, available, sold, price };
-											})();
-									`
+						(() => {
+							const detailsElement = document.querySelector('#product-quantity');
+							const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+							const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+							const price = priceRaw ? '$' + priceRaw : '';
+							const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+							const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+							return { title, available, sold, price };
+						})();
+					`
 
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
@@ -279,59 +288,77 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				mu.Unlock()
 			}(product)
 		}
-		wg.Wait()
 
-		// retry failed page
-		for _, productUrl := range failedURLs {
-			productDetailPool <- struct{}{}
-			defer func() { <-productDetailPool }()
-			fmt.Println("failedUrls ", productUrl)
-			err := chromedp.Run(browserCtx,
-				chromedp.Navigate(productUrl),
-				chromedp.ActionFunc(func(ctx context.Context) error {
+		// Goroutine untuk memproses retry
+		go func() {
+			for productUrl := range retryCh {
+				fmt.Println("retry error cihuuyy")
+				retryWg.Add(1)
+				go func(url string) {
+					defer retryWg.Done()
+					retryPool <- struct{}{}
+					defer func() { <-retryPool }()
+
 					var productDetailsResults struct {
 						Title     string `json:"title"`
 						Available string `json:"available"`
 						Sold      string `json:"sold"`
 						Price     string `json:"price"`
 					}
-					js := `
-			(() => {
-				const detailsElement = document.querySelector('#product-quantity');
-				const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-				const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-				const price = priceRaw ? '$' + priceRaw : '';
-				const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-				const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-				return { title, available, sold, price };
-			})();
-			`
-					err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
-					if err != nil {
-						return err
-					}
 
-					products = append(products, entity.Product{
-						ProductID:    extractProductID(productUrl),
-						ProductTitle: productDetailsResults.Title,
-						ProductURL:   productUrl,
-						ProductStock: productDetailsResults.Available,
-						ProductPrice: productDetailsResults.Price,
-						ProductSold:  productDetailsResults.Sold,
-					})
-					return nil
-				}),
-			)
-			if err != nil {
-				errCh <- err
-				continue
+					// Proses ulang scraping produk
+					err := chromedp.Run(browserCtx,
+						chromedp.Navigate(url),
+						chromedp.ActionFunc(func(ctx context.Context) error {
+							js := `
+						(() => {
+							const detailsElement = document.querySelector('#product-quantity');
+							const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+							const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+							const price = priceRaw ? '$' + priceRaw : '';
+							const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+							const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+							return { title, available, sold, price };
+						})();
+					`
+							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
+							if err != nil {
+								return err
+							}
+
+							mu.Lock()
+							products = append(products, entity.Product{
+								ProductID:    extractProductID(url),
+								ProductTitle: productDetailsResults.Title,
+								ProductURL:   url,
+								ProductStock: productDetailsResults.Available,
+								ProductPrice: productDetailsResults.Price,
+								ProductSold:  productDetailsResults.Sold,
+							})
+							mu.Unlock()
+							return nil
+						}),
+					)
+					if err != nil {
+						fmt.Println("eror di err retry cihuyy ", err)
+						errCh <- err
+						return
+					}
+				}(productUrl)
 			}
-		}
-		//  close channel and pool
+		}()
+
+		// Tunggu semua goroutine selesai
+		retryWg.Wait()
+		wg.Wait()
+
+		// Tutup semua channel
+		close(retryCh)
 		close(done)
 		close(productDetailPool)
 		close(errCh)
 
+		// Simpan hasil scraping
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
@@ -339,6 +366,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				Products:     products,
 			})
 		}
+
+		// Kirim hasil ke RabbitMQ
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 	}()
