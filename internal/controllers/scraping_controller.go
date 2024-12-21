@@ -92,19 +92,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	errCh := make(chan error, 1)
 
 	// handling error
-	var once sync.Once
 	go func() {
 		for err := range errCh {
 			messageError := "responseError"
 			messageCombine := messageError + ": " + err.Error()
 			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-			once.Do(func() {
-				cancelBrowser()
-				close(retryCh)
-				close(done)
-				close(productDetailPool)
-				close(errCh)
-			})
 		}
 	}()
 
@@ -289,7 +281,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			}(product)
 		}
 
-		// Goroutine untuk memproses retry
+		// Goroutine for retry product
 		go func() {
 			for productUrl := range retryCh {
 				fmt.Println("retry error cihuuyy")
@@ -305,8 +297,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						Sold      string `json:"sold"`
 						Price     string `json:"price"`
 					}
-
-					// Proses ulang scraping produk
 					err := chromedp.Run(browserCtx,
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
@@ -340,7 +330,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						}),
 					)
 					if err != nil {
-						fmt.Println("eror di err retry cihuyy ", err)
 						errCh <- err
 						return
 					}
@@ -348,17 +337,16 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			}
 		}()
 
-		// Tunggu semua goroutine selesai
-		retryWg.Wait()
+		// wait for all goroutine
 		wg.Wait()
-
-		// Tutup semua channel
+		retryWg.Wait()
+		// close channel and pool
 		close(retryCh)
 		close(done)
 		close(productDetailPool)
 		close(errCh)
 
-		// Simpan hasil scraping
+		// Collect and Send Final Data
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
@@ -367,7 +355,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			})
 		}
 
-		// Kirim hasil ke RabbitMQ
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, allCategoryProducts)
 	}()
