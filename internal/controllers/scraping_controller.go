@@ -87,7 +87,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	categoryPool := make(chan struct{}, maxWorker)
 	productListpool := make(chan struct{}, maxWorker)
 	productDetailPool := make(chan struct{}, maxWorker)
-	retryCh := make(chan string, maxWorker)
+	retryCategoryCh := make(chan string, maxWorker)
+	retryProductCh := make(chan string, maxWorker)
+	retryProductDetailCh := make(chan string, maxWorker)
 	retryPool := make(chan struct{}, maxWorker)
 	errCh := make(chan error, 1)
 
@@ -103,8 +105,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	//Scrape Categories
 	var categoryURLs []string
 	go func() {
-		defer close(categoryPool)
-		defer close(categoryCh)
+		var retryWg sync.WaitGroup
+		defer func() {
+			close(categoryCh)
+			close(categoryPool)
+		}()
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
 		baseUrl := "http://www.%s.ecrater.com%s"
@@ -116,12 +121,28 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			network.SetExtraHTTPHeaders(network.Headers(headers)),
 			chromedp.Navigate(sellerCategory),
 			chromedp.ActionFunc(func(ctx context.Context) error {
-				js := `
-			(() => {
-				return Array.from(document.querySelectorAll('section.clearfix a[href]'))
-								.map(link => link.href);
-			})()
+				checkService := `
+				(() => {
+					const h1Element = document.querySelector('body > h1');
+					return h1Element ? h1Element.textContent.trim() : '';
+				})();
 			`
+
+				var pageTitle string
+				if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
+					return err
+				}
+
+				if pageTitle == "Service Temporarily Unavailable" {
+					retryCategoryCh <- sellerCategory
+					return nil
+				}
+				js := `
+				(() => {
+					return Array.from(document.querySelectorAll('section.clearfix a[href]'))
+									.map(link => link.href);
+				})()
+				`
 				return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
 			}),
 		)
@@ -132,10 +153,53 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		for _, url := range categoryURLs {
 			categoryCh <- url
 		}
+		// Goroutine for retry categories Error
+		go func() {
+			for productUrl := range retryProductCh {
+				retryWg.Add(1)
+				go func(url string) {
+					defer retryWg.Done()
+					retryPool <- struct{}{}
+					defer func() { <-retryPool }()
+					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
+					defer cancel()
+					err := chromedp.Run(retryErrProductCtx,
+						chromedp.Navigate(url),
+						chromedp.ActionFunc(func(ctx context.Context) error {
+							js := `
+							(() => {
+								return Array.from(document.querySelectorAll('section.clearfix a[href]'))
+												.map(link => link.href);
+							})()
+							`
+							err := chromedp.Evaluate(js, &categoryURLs).Do(ctx)
+							if err != nil {
+								return err
+							}
+							for _, url := range categoryURLs {
+								categoryCh <- url
+							}
+							return nil
+						}),
+					)
+					if err != nil {
+						errCh <- err
+						return
+					}
+				}(productUrl)
+			}
+		}()
+		retryWg.Wait()
 	}()
 	//Scrape Products from Categories
 	go func() {
-		var wg sync.WaitGroup
+		var (
+			wg                     sync.WaitGroup
+			retryWg                sync.WaitGroup
+			categoryProductResults []struct {
+				Href string `json:"href"`
+			}
+		)
 		defer func() {
 			wg.Wait()
 			close(productCh)
@@ -152,18 +216,30 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				productCategoriesCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
 
-				var categoryProductResults []struct {
-					Href string `json:"href"`
-				}
-
 				err := chromedp.Run(productCategoriesCtx,
 					network.SetCacheDisabled(false),
 					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(url),
-					chromedp.WaitReady("#product-list-grid"),
+					chromedp.WaitReady("body"),
 					chromedp.ActionFunc(func(ctx context.Context) error {
+						checkService := `
+						(() => {
+							const h1Element = document.querySelector('body > h1');
+							return h1Element ? h1Element.textContent.trim() : '';
+						})();
+					`
+
+						var pageTitle string
+						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
+							return err
+						}
+
+						if pageTitle == "Service Temporarily Unavailable" {
+							retryProductCh <- url
+							return nil
+						}
 						js := `
 					(() => {
 						return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
@@ -185,8 +261,47 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 			}(url)
 		}
+		// Goroutine for retry product from categories
+		go func() {
+			for productUrl := range retryProductCh {
+				retryWg.Add(1)
+				go func(url string) {
+					defer retryWg.Done()
+					retryPool <- struct{}{}
+					defer func() { <-retryPool }()
+					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
+					defer cancel()
+					err := chromedp.Run(retryErrProductCtx,
+						chromedp.Navigate(url),
+						chromedp.ActionFunc(func(ctx context.Context) error {
+							js := `
+							(() => {
+								return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
+									.map(a => ({ href: a.href}));
+							})()
+							`
+							err := chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
+							if err != nil {
+								return err
+							}
+							for _, productResult := range categoryProductResults {
+								productCh <- entity.Product{
+									ProductID:  extractProductID(productResult.Href),
+									ProductURL: productResult.Href,
+								}
+							}
+							return nil
+						}),
+					)
+					if err != nil {
+						errCh <- err
+						return
+					}
+				}(productUrl)
+			}
+		}()
+		retryWg.Wait()
 	}()
-
 	// Scrape Product Details
 	go func() {
 		var (
@@ -244,7 +359,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						}
 
 						if pageTitle == "Service Temporarily Unavailable" {
-							retryCh <- productUrl
+							retryProductDetailCh <- productUrl
 							return nil
 						}
 
@@ -281,10 +396,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			}(product)
 		}
 
-		// Goroutine for retry product
+		// Goroutine for retry productDetail
 		go func() {
-			for productUrl := range retryCh {
-				fmt.Println("retry error cihuuyy")
+			for productUrl := range retryProductDetailCh {
 				retryWg.Add(1)
 				go func(url string) {
 					defer retryWg.Done()
@@ -297,7 +411,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						Sold      string `json:"sold"`
 						Price     string `json:"price"`
 					}
-					err := chromedp.Run(browserCtx,
+					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
+					defer cancel()
+					err := chromedp.Run(retryErrProductCtx,
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
@@ -340,11 +456,14 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		// wait for all goroutine
 		wg.Wait()
 		retryWg.Wait()
-		// close channel and pool
-		close(retryCh)
+		// close ctx, channel and pool
+		close(retryCategoryCh)
+		close(retryProductCh)
+		close(retryProductDetailCh)
 		close(done)
 		close(productDetailPool)
 		close(errCh)
+		cancelBrowser()
 
 		// Collect and Send Final Data
 		for _, url := range categoryURLs {
