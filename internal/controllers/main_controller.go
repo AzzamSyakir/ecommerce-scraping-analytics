@@ -30,7 +30,7 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 	}
 }
 
-func (mainController *MainController) GetSellerProductsBySeller(c *gin.Context) {
+func (mainController *MainController) GetAllSellerProducts(c *gin.Context) {
 	seller := c.Param("seller")
 	RabbitMQConnection := mainController.Rabbitmq.Connection
 	rabbitMqChannel, err := RabbitMQConnection.Channel()

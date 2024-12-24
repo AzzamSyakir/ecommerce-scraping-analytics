@@ -27,7 +27,7 @@ func NewScrapingController(rabbitMq *config.RabbitMqConfig, producer *producer.S
 	return scrapingController
 }
 
-func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string) {
+func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller string) {
 	// Extract functions for category and product details
 	extractCategoryID := func(url string) string {
 		re := regexp.MustCompile(`/c/([0-9]+)`)
@@ -76,7 +76,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			chromedp.Flag("disable-extensions", true),
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
-			chromedp.Flag("headless", true),
 		)...,
 	)
 
@@ -358,7 +357,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					network.Enable(),
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
-					chromedp.WaitVisible("body", chromedp.ByQuery),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						checkService := `
 						(() => {
