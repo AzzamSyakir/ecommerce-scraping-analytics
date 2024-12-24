@@ -86,7 +86,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
 	// Channel and pool definitions
-	maxWorker := 100
+	maxWorker := 20
 	categoryCh := make(chan string)
 	productCh := make(chan entity.Product)
 	done := make(chan bool)
@@ -129,7 +129,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 			chromedp.ActionFunc(func(ctx context.Context) error {
 				checkService := `
 				(() => {
-					const h1Element = document.querySelector('body > h1');
+					const h1Element = document.getElementsByTagName('h1')[0];
 					return h1Element ? h1Element.textContent.trim() : '';
 				})();
 			`
@@ -145,10 +145,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 				}
 				js := `
 				(() => {
-					return Array.from(document.querySelectorAll('section.clearfix a[href]'))
-									.map(link => link.href);
+					const links = document.querySelectorAll('section.clearfix a[href]');
+					return [...links].map(link => link.href);
 				})()
-				`
+			`
 				return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
 			}),
 		)
@@ -178,10 +178,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
 							(() => {
-								return Array.from(document.querySelectorAll('section.clearfix a[href]'))
-												.map(link => link.href);
+								const links = document.querySelectorAll('section.clearfix a[href]');
+								return [...links].map(link => link.href);
 							})()
-							`
+						`
 							err := chromedp.Evaluate(js, &categoryURLs).Do(ctx)
 							if err != nil {
 								return err
@@ -236,7 +236,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						checkService := `
 						(() => {
-							const h1Element = document.querySelector('body > h1');
+							const h1Element = document.getElementsByTagName('h1')[0];
 							return h1Element ? h1Element.textContent.trim() : '';
 						})();
 					`
@@ -251,10 +251,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 							return nil
 						}
 						js := `
-					(() => {
-						return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
-							.map(a => ({ href: a.href}));
-					})()
+						(() => {
+							return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
+								.map(a => ({ href: a.href }));
+						})()
 					`
 						return chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
 					}),
@@ -289,10 +289,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-							(() => {
-								return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
-									.map(a => ({ href: a.href}));
-							})()
+								(() => {
+									return [...document.querySelectorAll('#product-list-grid > li > div.product-details > h2 > a')]
+										.map(a => ({ href: a.href }));
+								})()
 							`
 							err := chromedp.Evaluate(js, &categoryProductResults).Do(ctx)
 							if err != nil {
@@ -362,7 +362,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						checkService := `
 						(() => {
-							const h1Element = document.querySelector('body > h1');
+							const h1Element = document.getElementsByTagName('h1')[0];
 							return h1Element ? h1Element.textContent.trim() : '';
 						})();
 					`
@@ -376,19 +376,21 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 							retryProductDetailCh <- productUrl
 							return nil
 						}
-
 						js := `
 						(() => {
 							const detailsElement = document.querySelector('#product-quantity');
 							const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 							const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-							const price = priceRaw ? '$' + priceRaw : '';
 							const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
 							const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-							return { title, available, sold, price };
-						})();
+							return { 
+								title, 
+								available, 
+								sold, 
+								price: priceRaw ? '$' + priceRaw : '' 
+							};
+						})()
 					`
-
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
 				)
@@ -435,16 +437,20 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-						(() => {
-							const detailsElement = document.querySelector('#product-quantity');
-							const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-							const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-							const price = priceRaw ? '$' + priceRaw : '';
-							const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-							const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-							return { title, available, sold, price };
-						})();
-					`
+							(() => {
+								const detailsElement = document.querySelector('#product-quantity');
+								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								return { 
+									title, 
+									available, 
+									sold, 
+									price: priceRaw ? '$' + priceRaw : '' 
+								};
+							})()
+						`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 							if err != nil {
 								return err
