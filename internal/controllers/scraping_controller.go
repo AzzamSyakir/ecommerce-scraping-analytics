@@ -58,7 +58,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 		"Accept-Encoding":           "gzip, deflate, br",
-		"Accept-Language":           "en-US,en;q=0.5",
+		"Accept-Language":           "en-US,en;q=0.9",
 		"Cache-Control":             "max-age=0",
 		"Connection":                "keep-alive",
 		"Upgrade-Insecure-Requests": "1",
@@ -71,9 +71,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
-			chromedp.Flag("headless", false),
+			chromedp.Flag("disable-plugins", true),
+			chromedp.Flag("disable-background-timer-throttling", true),
+			chromedp.Flag("disable-extensions", true),
+			chromedp.Flag("blink-settings", "imagesEnabled=false"),
+			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
+			chromedp.Flag("headless", true),
 		)...,
 	)
+
 	defer cancel()
 
 	// Create a browser context from the allocator
@@ -164,6 +170,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
+						network.SetCacheDisabled(false),
+						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
+						network.Enable(),
+						network.SetExtraHTTPHeaders(network.Headers(headers)),
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
@@ -272,6 +282,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
+						network.SetCacheDisabled(false),
+						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
+						network.Enable(),
+						network.SetExtraHTTPHeaders(network.Headers(headers)),
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
@@ -414,6 +428,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSellerProduct(seller string)
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
+						network.SetCacheDisabled(false),
+						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
+						network.Enable(),
+						network.SetExtraHTTPHeaders(network.Headers(headers)),
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
