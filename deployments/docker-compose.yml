@@ -1,22 +1,55 @@
 services:
-
   db:
     image: postgres
-    restart:  unless-stopped
+    restart: unless-stopped
+    container_name: app-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB} 
+      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - 5432:5432
     volumes:
-      - ~/apps/postgres:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
+      - ../internal/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  app:
-    build: 
-          context: ../
-          dockerfile: deployments/dockerfile
+  # app:
+  #   build:
+  #     context: ../
+  #     dockerfile: deployments/dockerfile
+  #   container_name: app
+  #   restart: unless-stopped
+  #   command: go run main.go
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./:/app
+
+  rabbitmq:
+    image: rabbitmq:management-alpine
     restart: unless-stopped
-    command: go run main.go
+    container_name: rabbitmq
     ports:
-      - "8080:80"
+        - "${RABBITMQ_PORT}:5672"
+        - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    volumes:
+        - rabbitmq-data:/var/lib/rabbitmq/
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    restart: unless-stopped
+    container_name: swagger-ui
+    environment:
+      SWAGGER_JSON: /data/swagger.yml
+    ports:
+      - "${SWAGGER_PORT}:8080"
+    volumes:
+      - ../api:/data
+
+volumes:
+  db-data:
+  rabbitmq-data:
