@@ -318,11 +318,19 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 	// Scrape Product Details
 	go func() {
 		var (
-			wg                  sync.WaitGroup
-			retryWg             sync.WaitGroup
-			mu                  sync.Mutex
-			allCategoryProducts []entity.CategoryProducts
-			products            []entity.Product
+			wg                    sync.WaitGroup
+			retryWg               sync.WaitGroup
+			mu                    sync.Mutex
+			allCategoryProducts   []entity.CategoryProducts
+			products              []entity.Product
+			productDetailsResults struct {
+				Title       string `json:"title"`
+				Available   string `json:"available"`
+				Sold        string `json:"sold"`
+				Price       string `json:"price"`
+				Rating      string `json:"rating"`
+				RatingCount string `json:"ratingCount"`
+			}
 		)
 		// scrape page productDetail
 		for product := range productCh {
@@ -342,14 +350,6 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 						productUrl = "https://www.ecrater.com" + product.ProductURL[pos+len(".ecrater.com"):]
 					}
 				}
-
-				var productDetailsResults struct {
-					Title     string `json:"title"`
-					Available string `json:"available"`
-					Sold      string `json:"sold"`
-					Price     string `json:"price"`
-				}
-
 				// Scraping page productDetail
 				err := chromedp.Run(productDetailCtx,
 					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
@@ -381,15 +381,19 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
 								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
+								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
 								return { 
 										title, 
 										available, 
 										sold, 
-										price: priceRaw ? '$' + priceRaw : '' 
+										price: priceRaw ? '$' + priceRaw : '',
+										rating, 
+										ratingCount 
 								};
 						})()
 						`
-
 						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 					}),
 				)
@@ -400,12 +404,14 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 
 				mu.Lock()
 				products = append(products, entity.Product{
-					ProductID:    extractProductID(productUrl),
-					ProductTitle: productDetailsResults.Title,
-					ProductURL:   productUrl,
-					ProductStock: productDetailsResults.Available,
-					ProductPrice: productDetailsResults.Price,
-					ProductSold:  productDetailsResults.Sold,
+					ProductID:          extractProductID(productUrl),
+					ProductTitle:       productDetailsResults.Title,
+					ProductURL:         productUrl,
+					ProductStock:       productDetailsResults.Available,
+					ProductPrice:       productDetailsResults.Price,
+					ProductSold:        productDetailsResults.Sold,
+					ProductRating:      productDetailsResults.Rating,
+					ProductRatingCount: productDetailsResults.RatingCount,
 				})
 				mu.Unlock()
 			}(product)
@@ -419,13 +425,6 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 					defer retryWg.Done()
 					retryPool <- struct{}{}
 					defer func() { <-retryPool }()
-
-					var productDetailsResults struct {
-						Title     string `json:"title"`
-						Available string `json:"available"`
-						Sold      string `json:"sold"`
-						Price     string `json:"price"`
-					}
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
@@ -437,19 +436,24 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
 							(() => {
-								const detailsElement = document.querySelector('#product-quantity');
-								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-								return { 
-									title, 
-									available, 
-									sold, 
-									price: priceRaw ? '$' + priceRaw : '' 
-								};
+									const detailsElement = document.querySelector('#product-quantity');
+									const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+									const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
+									const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+									const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+									const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+									const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
+									const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
+									return { 
+											title, 
+											available, 
+											sold, 
+											price: priceRaw ? '$' + priceRaw : '',
+											rating, 
+											ratingCount 
+									};
 							})()
-						`
+							`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 							if err != nil {
 								return err
@@ -794,11 +798,19 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	// Scrape Product Details
 	go func() {
 		var (
-			wg                  sync.WaitGroup
-			retryWg             sync.WaitGroup
-			mu                  sync.Mutex
-			allCategoryProducts []entity.CategoryProducts
-			products            []entity.Product
+			wg                    sync.WaitGroup
+			retryWg               sync.WaitGroup
+			mu                    sync.Mutex
+			allCategoryProducts   []entity.CategoryProducts
+			products              []entity.Product
+			productDetailsResults struct {
+				Title       string `json:"title"`
+				Available   string `json:"available"`
+				Sold        string `json:"sold"`
+				Price       string `json:"price"`
+				Rating      string `json:"rating"`
+				RatingCount string `json:"ratingCount"`
+			}
 		)
 		// scrape page productDetail
 		for product := range productCh {
@@ -817,13 +829,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					if pos != -1 {
 						productUrl = "https://www.ecrater.com" + product.ProductURL[pos+len(".ecrater.com"):]
 					}
-				}
-
-				var productDetailsResults struct {
-					Title     string `json:"title"`
-					Available string `json:"available"`
-					Sold      string `json:"sold"`
-					Price     string `json:"price"`
 				}
 
 				// Scraping page productDetail
@@ -857,15 +862,19 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
 								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
+								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
 								return { 
 										title, 
 										available, 
 										sold, 
-										price: priceRaw ? '$' + priceRaw : '' 
+										price: priceRaw ? '$' + priceRaw : '',
+										rating, 
+										ratingCount 
 								};
 						})()
 						`
-
 						err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 						if err != nil {
 							return err
@@ -875,12 +884,14 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						}
 						mu.Lock()
 						products = append(products, entity.Product{
-							ProductID:    extractProductID(productUrl),
-							ProductTitle: productDetailsResults.Title,
-							ProductURL:   productUrl,
-							ProductStock: productDetailsResults.Available,
-							ProductPrice: productDetailsResults.Price,
-							ProductSold:  productDetailsResults.Sold,
+							ProductID:          extractProductID(productUrl),
+							ProductTitle:       productDetailsResults.Title,
+							ProductURL:         productUrl,
+							ProductStock:       productDetailsResults.Available,
+							ProductPrice:       productDetailsResults.Price,
+							ProductSold:        productDetailsResults.Sold,
+							ProductRating:      productDetailsResults.Rating,
+							ProductRatingCount: productDetailsResults.RatingCount,
 						})
 						mu.Unlock()
 						return nil
@@ -901,13 +912,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					defer retryWg.Done()
 					retryPool <- struct{}{}
 					defer func() { <-retryPool }()
-
-					var productDetailsResults struct {
-						Title     string `json:"title"`
-						Available string `json:"available"`
-						Sold      string `json:"sold"`
-						Price     string `json:"price"`
-					}
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
@@ -918,19 +922,24 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-							(() => {
+						(() => {
 								const detailsElement = document.querySelector('#product-quantity');
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
 								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
+								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
 								return { 
-									title, 
-									available, 
-									sold, 
-									price: priceRaw ? '$' + priceRaw : '' 
+										title, 
+										available, 
+										sold, 
+										price: priceRaw ? '$' + priceRaw : '',
+										rating, 
+										ratingCount 
 								};
-							})()
+						})()
 						`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 							if err != nil {
