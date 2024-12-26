@@ -5,10 +5,10 @@ type Product struct {
 	ProductTitle       string `json:"product_title"`
 	ProductURL         string `json:"product_url"`
 	ProductPrice       string `json:"product_price"`
-	ProductStock       string `json:"product_stock"`
-	ProductSold        string `json:"product_sold"`
-	ProductRating      string `json:"product_rating"`
-	ProductRatingCount string `json:"product_rating_count"`
+	ProductStock       string `json:"product_stock,omitempty"`
+	ProductSold        string `json:"product_sold,omitempty"`
+	ProductRating      string `json:"product_rating,omitempty"`
+	ProductRatingCount string `json:"product_rating_count,omitempty"`
 }
 
 type CategoryProducts struct {

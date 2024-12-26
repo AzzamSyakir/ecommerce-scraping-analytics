@@ -380,7 +380,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '';
 						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
 								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
 								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
