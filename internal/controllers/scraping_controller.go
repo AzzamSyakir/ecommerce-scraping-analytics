@@ -324,12 +324,18 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 			allCategoryProducts   []entity.CategoryProducts
 			products              []entity.Product
 			productDetailsResults struct {
-				Title       string `json:"title"`
-				Available   string `json:"available"`
-				Sold        string `json:"sold"`
-				Price       string `json:"price"`
-				Rating      string `json:"rating"`
-				RatingCount string `json:"ratingCount"`
+				Title     string  `json:"title"`
+				Available string  `json:"available"`
+				Sold      string  `json:"sold"`
+				Price     string  `json:"price"`
+				Rating    float64 `json:"rating"`
+			}
+			ratingResults struct {
+				Scores []struct {
+					Score float64 `json:"score"`
+					Count int     `json:"count"`
+				} `json:"scores"`
+				Count int `json:"count"`
 			}
 		)
 		// scrape page productDetail
@@ -359,12 +365,11 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 					chromedp.Navigate(productUrl),
 					chromedp.ActionFunc(func(ctx context.Context) error {
 						checkService := `
-						(() => {
-							const h1Element = document.getElementsByTagName('h1')[0];
-							return h1Element ? h1Element.textContent.trim() : '';
-						})();
-					`
-
+			(() => {
+				const h1Element = document.getElementsByTagName('h1')[0];
+				return h1Element ? h1Element.textContent.trim() : '';
+			})();
+			`
 						var pageTitle string
 						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
 							return err
@@ -374,44 +379,85 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 							retryProductDetailCh <- productUrl
 							return nil
 						}
-						js := `
+
+						jsProductDetails := `
+			(() => {
+				const detailsElement = document.querySelector('#product-quantity');
+				const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+				const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
+				const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+				const sold = detailsElement?.querySelector('b')?.textContent.trim() || '';
+				return { 
+					title, 
+					available, 
+					sold, 
+					price: priceRaw ? '$' + priceRaw : ''
+				};
+			})();
+			`
+						if err := chromedp.Evaluate(jsProductDetails, &productDetailsResults).Do(ctx); err != nil {
+							return err
+						}
+
+						jsRating := `
 						(() => {
-								const detailsElement = document.querySelector('#product-quantity');
-								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
-								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '';
-						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
-								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
-								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
-								return { 
-										title, 
-										available, 
-										sold, 
-										price: priceRaw ? '$' + priceRaw : '',
-										rating, 
-										ratingCount 
-								};
-						})()
+								const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								if (!ratingElement) return { scores: [], count: 0 }; // Jika elemen tidak ditemukan
+
+								const scores = [];
+								let count = 0;
+
+								const scoreText = ratingElement.firstChild?.nodeValue.trim() || ''; // Ambil skor rating
+								const countText = ratingElement.textContent.replace(scoreText, '').trim() || '0 ratings'; // Ambil teks jumlah rating
+								const score = parseFloat(scoreText); // Konversi skor menjadi angka
+								const ratingCount = parseInt(countText.replace(/\D/g, ''), 10); // Ambil angka dari teks jumlah rating
+
+								if (!isNaN(score) && !isNaN(ratingCount)) {
+										scores.push({
+												score: score,
+												count: ratingCount
+										});
+										count += ratingCount;
+								}
+
+								return { scores, count };
+						})();
 						`
-						return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
+
+						if err := chromedp.Evaluate(jsRating, &ratingResults).Do(ctx); err != nil {
+							return err
+						}
+
+						if ratingResults.Count > 0 {
+							var totalScore float64
+							var totalCount int
+
+							for _, r := range ratingResults.Scores {
+								totalScore += r.Score * float64(r.Count)
+								totalCount += r.Count
+							}
+
+							productDetailsResults.Rating = totalScore / float64(totalCount)
+						} else {
+							productDetailsResults.Rating = 0.0
+						}
+						return nil
 					}),
 				)
+
 				if err != nil {
 					errCh <- err
 					return
 				}
-
 				mu.Lock()
 				products = append(products, entity.Product{
-					ProductID:          extractProductID(productUrl),
-					ProductTitle:       productDetailsResults.Title,
-					ProductURL:         productUrl,
-					ProductStock:       productDetailsResults.Available,
-					ProductPrice:       productDetailsResults.Price,
-					ProductSold:        productDetailsResults.Sold,
-					ProductRating:      productDetailsResults.Rating,
-					ProductRatingCount: productDetailsResults.RatingCount,
+					ProductID:     extractProductID(productUrl),
+					ProductTitle:  productDetailsResults.Title,
+					ProductURL:    productUrl,
+					ProductStock:  productDetailsResults.Available,
+					ProductPrice:  productDetailsResults.Price,
+					ProductSold:   productDetailsResults.Sold,
+					ProductRating: productDetailsResults.Rating,
 				})
 				mu.Unlock()
 			}(product)
@@ -434,39 +480,77 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 						network.SetExtraHTTPHeaders(network.Headers(headers)),
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
-							js := `
+							jsProductDetails := `
 							(() => {
-									const detailsElement = document.querySelector('#product-quantity');
-									const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-									const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
-									const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-									const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-									const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
-									const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
-									const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
-									return { 
-											title, 
-											available, 
-											sold, 
-											price: priceRaw ? '$' + priceRaw : '',
-											rating, 
-											ratingCount 
-									};
-							})()
+								const detailsElement = document.querySelector('#product-quantity');
+								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
+								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '';
+								return { 
+									title, 
+									available, 
+									sold, 
+									price: priceRaw ? '$' + priceRaw : ''
+								};
+							})();
 							`
-							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
-							if err != nil {
+							if err := chromedp.Evaluate(jsProductDetails, &productDetailsResults).Do(ctx); err != nil {
 								return err
+							}
+
+							jsRating := `
+							(() => {
+									const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+									if (!ratingElement) return { scores: [], count: 0 }; // Jika elemen tidak ditemukan
+
+									const scores = [];
+									let count = 0;
+
+									const scoreText = ratingElement.firstChild?.nodeValue.trim() || ''; // Ambil skor rating
+									const countText = ratingElement.textContent.replace(scoreText, '').trim() || '0 ratings'; // Ambil teks jumlah rating
+									const score = parseFloat(scoreText); // Konversi skor menjadi angka
+									const ratingCount = parseInt(countText.replace(/\D/g, ''), 10); // Ambil angka dari teks jumlah rating
+
+									if (!isNaN(score) && !isNaN(ratingCount)) {
+											scores.push({
+													score: score,
+													count: ratingCount
+											});
+											count += ratingCount;
+									}
+
+									return { scores, count };
+							})();
+							`
+
+							if err := chromedp.Evaluate(jsRating, &ratingResults).Do(ctx); err != nil {
+								return err
+							}
+
+							if ratingResults.Count > 0 {
+								var totalScore float64
+								var totalCount int
+
+								for _, r := range ratingResults.Scores {
+									totalScore += r.Score * float64(r.Count)
+									totalCount += r.Count
+								}
+
+								productDetailsResults.Rating = totalScore / float64(totalCount)
+							} else {
+								productDetailsResults.Rating = 0
 							}
 
 							mu.Lock()
 							products = append(products, entity.Product{
-								ProductID:    extractProductID(url),
-								ProductTitle: productDetailsResults.Title,
-								ProductURL:   url,
-								ProductStock: productDetailsResults.Available,
-								ProductPrice: productDetailsResults.Price,
-								ProductSold:  productDetailsResults.Sold,
+								ProductID:     extractProductID(url),
+								ProductTitle:  productDetailsResults.Title,
+								ProductURL:    url,
+								ProductStock:  productDetailsResults.Available,
+								ProductPrice:  productDetailsResults.Price,
+								ProductSold:   productDetailsResults.Sold,
+								ProductRating: productDetailsResults.Rating,
 							})
 							mu.Unlock()
 							return nil
@@ -804,12 +888,18 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			allCategoryProducts   []entity.CategoryProducts
 			products              []entity.Product
 			productDetailsResults struct {
-				Title       string `json:"title"`
-				Available   string `json:"available"`
-				Sold        string `json:"sold"`
-				Price       string `json:"price"`
-				Rating      string `json:"rating"`
-				RatingCount string `json:"ratingCount"`
+				Title     string  `json:"title"`
+				Available string  `json:"available"`
+				Sold      string  `json:"sold"`
+				Price     string  `json:"price"`
+				Rating    float64 `json:"rating"`
+			}
+			ratingResults struct {
+				Scores []struct {
+					Score float64 `json:"score"`
+					Count int     `json:"count"`
+				} `json:"scores"`
+				Count int `json:"count"`
 			}
 		)
 		// scrape page productDetail
@@ -870,11 +960,52 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 										available, 
 										sold, 
 										price: priceRaw ? '$' + priceRaw : '',
-										rating, 
-										ratingCount 
 								};
 						})()
 						`
+
+						jsRating := `
+						(() => {
+								const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								if (!ratingElement) return { scores: [], count: 0 }; // Jika elemen tidak ditemukan
+
+								const scores = [];
+								let count = 0;
+
+								const scoreText = ratingElement.firstChild?.nodeValue.trim() || ''; // Ambil skor rating
+								const countText = ratingElement.textContent.replace(scoreText, '').trim() || '0 ratings'; // Ambil teks jumlah rating
+								const score = parseFloat(scoreText); // Konversi skor menjadi angka
+								const ratingCount = parseInt(countText.replace(/\D/g, ''), 10); // Ambil angka dari teks jumlah rating
+
+								if (!isNaN(score) && !isNaN(ratingCount)) {
+										scores.push({
+												score: score,
+												count: ratingCount
+										});
+										count += ratingCount;
+								}
+
+								return { scores, count };
+						})();
+						`
+
+						if err := chromedp.Evaluate(jsRating, &ratingResults).Do(ctx); err != nil {
+							return err
+						}
+
+						if ratingResults.Count > 0 {
+							var totalScore float64
+							var totalCount int
+
+							for _, r := range ratingResults.Scores {
+								totalScore += r.Score * float64(r.Count)
+								totalCount += r.Count
+							}
+
+							productDetailsResults.Rating = totalScore / float64(totalCount)
+						} else {
+							productDetailsResults.Rating = 0
+						}
 						err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 						if err != nil {
 							return err
@@ -884,14 +1015,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						}
 						mu.Lock()
 						products = append(products, entity.Product{
-							ProductID:          extractProductID(productUrl),
-							ProductTitle:       productDetailsResults.Title,
-							ProductURL:         productUrl,
-							ProductStock:       productDetailsResults.Available,
-							ProductPrice:       productDetailsResults.Price,
-							ProductSold:        productDetailsResults.Sold,
-							ProductRating:      productDetailsResults.Rating,
-							ProductRatingCount: productDetailsResults.RatingCount,
+							ProductID:     extractProductID(productUrl),
+							ProductTitle:  productDetailsResults.Title,
+							ProductURL:    productUrl,
+							ProductStock:  productDetailsResults.Available,
+							ProductPrice:  productDetailsResults.Price,
+							ProductSold:   productDetailsResults.Sold,
+							ProductRating: productDetailsResults.Rating,
 						})
 						mu.Unlock()
 						return nil
@@ -927,20 +1057,57 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-						    const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
-								const rating = ratingElement?.firstChild?.nodeValue.trim() || '';
-								const ratingCount = ratingElement?.textContent.replace(rating, '').trim() || '0 ratings';								
+								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';					
 								return { 
 										title, 
 										available, 
 										sold, 
 										price: priceRaw ? '$' + priceRaw : '',
-										rating, 
-										ratingCount 
 								};
 						})()
 						`
+							jsRating := `
+						(() => {
+								const ratingElement = document.querySelector('#product-title > h1 > a > span.product-rating');
+								if (!ratingElement) return { scores: [], count: 0 }; // Jika elemen tidak ditemukan
+						
+								const scores = [];
+								let count = 0;
+						
+								const scoreText = ratingElement.firstChild?.nodeValue.trim() || ''; // Ambil skor rating
+								const countText = ratingElement.textContent.replace(scoreText, '').trim() || '0 ratings'; // Ambil teks jumlah rating
+								const score = parseFloat(scoreText); // Konversi skor menjadi angka
+								const ratingCount = parseInt(countText.replace(/\D/g, ''), 10); // Ambil angka dari teks jumlah rating
+						
+								if (!isNaN(score) && !isNaN(ratingCount)) {
+										scores.push({
+												score: score,
+												count: ratingCount
+										});
+										count += ratingCount;
+								}
+						
+								return { scores, count };
+						})();
+						`
+
+							if err := chromedp.Evaluate(jsRating, &ratingResults).Do(ctx); err != nil {
+								return err
+							}
+
+							if ratingResults.Count > 0 {
+								var totalScore float64
+								var totalCount int
+
+								for _, r := range ratingResults.Scores {
+									totalScore += r.Score * float64(r.Count)
+									totalCount += r.Count
+								}
+
+								productDetailsResults.Rating = totalScore / float64(totalCount)
+							} else {
+								productDetailsResults.Rating = 0
+							}
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 							if err != nil {
 								return err
@@ -952,12 +1119,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 
 							mu.Lock()
 							products = append(products, entity.Product{
-								ProductID:    extractProductID(url),
-								ProductTitle: productDetailsResults.Title,
-								ProductURL:   url,
-								ProductStock: productDetailsResults.Available,
-								ProductPrice: productDetailsResults.Price,
-								ProductSold:  productDetailsResults.Sold,
+								ProductID:     extractProductID(url),
+								ProductTitle:  productDetailsResults.Title,
+								ProductURL:    url,
+								ProductStock:  productDetailsResults.Available,
+								ProductPrice:  productDetailsResults.Price,
+								ProductSold:   productDetailsResults.Sold,
+								ProductRating: productDetailsResults.Rating,
 							})
 							mu.Unlock()
 							return nil
