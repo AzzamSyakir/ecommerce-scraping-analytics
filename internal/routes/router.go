@@ -30,7 +30,8 @@ func NewRoute(router *gin.Engine, logic *controllers.LogicController, scraping *
 func Register(router *gin.Engine, c *controllers.MainController) {
 	categories := router.Group("/api")
 	{
-		categories.GET("/trend-product/:seller", c.GetAllSellerProducts)
+		categories.GET("/get-all-products/:seller", c.GetAllSellerProducts)
+		categories.GET("/get-sold-products/:seller", c.GetSoldSellerProducts)
 	}
 
 }

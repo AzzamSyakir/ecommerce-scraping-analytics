@@ -1,12 +1,13 @@
 package entity
 
 type Product struct {
-	ProductID    string `json:"product_id"`
-	ProductTitle string `json:"product_title"`
-	ProductURL   string `json:"product_url"`
-	ProductPrice string `json:"product_price"`
-	ProductStock string `json:"product_stock"`
-	ProductSold  string `json:"product_sold"`
+	ProductID     string  `json:"product_id"`
+	ProductTitle  string  `json:"product_title"`
+	ProductURL    string  `json:"product_url"`
+	ProductPrice  string  `json:"product_price"`
+	ProductStock  string  `json:"product_stock,omitempty"`
+	ProductSold   string  `json:"product_sold,omitempty"`
+	ProductRating float64 `json:"product_rating,omitempty"`
 }
 
 type CategoryProducts struct {

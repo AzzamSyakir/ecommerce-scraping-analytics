@@ -46,8 +46,6 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 		return
 	}
 
-	fmt.Println("Consumer started for queue:", queueName)
-
 	for msg := range msgs {
 		var payload RabbitMQPayload
 
