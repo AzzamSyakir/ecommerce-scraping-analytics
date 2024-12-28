@@ -38,8 +38,6 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageAllS
 		log.Printf("Queue '%s' not available. Retrying in 5 seconds... Error: %v", queueName, err)
 	}
 
-	log.Printf("Consumer started for queue: %s", queueName)
-
 	for msg := range msgs {
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
@@ -78,8 +76,6 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageSold
 	if err != nil {
 		log.Printf("Queue '%s' not available. Retrying in 5 seconds... Error: %v", queueName, err)
 	}
-
-	log.Printf("Consumer started for queue: %s", queueName)
 
 	for msg := range msgs {
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
