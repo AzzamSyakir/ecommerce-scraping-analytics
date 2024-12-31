@@ -26,6 +26,7 @@ func NewDBConfig() *DatabaseConfig {
 
 func NewDatabaseConnection() *GormDatabase {
 	var (
+		dbNeed           = os.Getenv("POSTGRES_NEED")
 		postgresHost     = os.Getenv("POSTGRES_HOST")
 		postgresPort     = os.Getenv("POSTGRES_PORT")
 		postgresUser     = os.Getenv("POSTGRES_USER")
@@ -36,14 +37,17 @@ func NewDatabaseConnection() *GormDatabase {
 	if err != nil {
 		panic(err)
 	}
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", postgresHost, postgresPortInt, postgresUser, postgresPassword, postgresDb)
-	connection, err := gorm.Open(postgres.Open(sqlInfo), &gorm.Config{})
-	if err != nil {
-		panic(err)
-	}
+	if dbNeed == "true" {
+		sqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", postgresHost, postgresPortInt, postgresUser, postgresPassword, postgresDb)
+		connection, err := gorm.Open(postgres.Open(sqlInfo), &gorm.Config{})
+		if err != nil {
+			panic(err)
+		}
 
-	Db := &GormDatabase{
-		Connection: connection,
+		Db := &GormDatabase{
+			Connection: connection,
+		}
+		return Db
 	}
-	return Db
+	return nil
 }
