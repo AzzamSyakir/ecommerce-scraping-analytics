@@ -922,6 +922,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
+<<<<<<< HEAD
 								(() => {
 								const details = document.querySelector('#product-quantity');
 								const title = document.querySelector('#product-title h1')?.textContent.trim();
@@ -929,6 +930,20 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
 								const available = details?.textContent.split(',')[0]?.trim();
 								return { title, available, sold, price: priceRaw };
+=======
+							(() => {
+								const detailsElement = document.querySelector('#product-quantity');
+								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
+								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
+								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
+								const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
+								return { 
+									title, 
+									available, 
+									sold, 
+									price: priceRaw ? '$' + priceRaw : '' 
+								};
+>>>>>>> b943c27a4f2027a43b505da0034160c31e6ee9cd
 							})()
 						`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
