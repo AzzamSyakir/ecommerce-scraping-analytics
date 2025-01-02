@@ -15,3 +15,8 @@ type CategoryProducts struct {
 	CategoryName string    `json:"category_name"`
 	Products     []Product `json:"products"`
 }
+
+type ProductWithCategory struct {
+	CategoryURL string
+	Product     Product
+}
