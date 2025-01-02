@@ -7,6 +7,7 @@ import (
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -117,7 +118,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 		}()
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
-		baseUrl := "http://www.%s.ecrater.com%s"
+		baseUrl := "http://%s.ecrater.com%s"
 		sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 		err := chromedp.Run(browserCtx,
 			network.SetCacheDisabled(false),
@@ -346,7 +347,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 				var productDetailsResults struct {
 					Title     string `json:"title"`
 					Available string `json:"available"`
-					Sold      string `json:"sold"`
+					Sold      int    `json:"sold"`
 					Price     string `json:"price"`
 				}
 
@@ -380,7 +381,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								const sold = parseInt(detailsElement?.querySelector('b')?.textContent.trim() || '0', 10);
 								return { 
 										title, 
 										available, 
@@ -423,7 +424,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 					var productDetailsResults struct {
 						Title     string `json:"title"`
 						Available string `json:"available"`
-						Sold      string `json:"sold"`
+						Sold      int    `json:"sold"`
 						Price     string `json:"price"`
 					}
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
@@ -441,7 +442,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								const sold = parseInt(detailsElement?.querySelector('b')?.textContent.trim() || '0', 10);
 								return { 
 									title, 
 									available, 
@@ -594,7 +595,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		}()
 		categoryPool <- struct{}{}
 		defer func() { <-categoryPool }()
-		baseUrl := "http://www.%s.ecrater.com%s"
+		baseUrl := "http://%s.ecrater.com%s"
 		sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 		err := chromedp.Run(browserCtx,
 			network.SetCacheDisabled(false),
@@ -823,7 +824,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				var productDetailsResults struct {
 					Title     string `json:"title"`
 					Available string `json:"available"`
-					Sold      string `json:"sold"`
+					Sold      int    `json:"sold"`
 					Price     string `json:"price"`
 				}
 
@@ -857,7 +858,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.firstChild?.nodeValue.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								const sold = parseInt(detailsElement?.querySelector('b')?.textContent.trim() || '0', 10);
+
 								return { 
 										title, 
 										available, 
@@ -871,7 +873,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						if err != nil {
 							return err
 						}
-						if productDetailsResults.Sold == "" || productDetailsResults.Sold == "0" {
+						if productDetailsResults.Sold == 0 {
 							return nil
 						}
 						mu.Lock()
@@ -906,7 +908,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					var productDetailsResults struct {
 						Title     string `json:"title"`
 						Available string `json:"available"`
-						Sold      string `json:"sold"`
+						Sold      int    `json:"sold"`
 						Price     string `json:"price"`
 					}
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
@@ -924,7 +926,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
 								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
 								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
+								const sold = parseInt(detailsElement?.querySelector('b')?.textContent.trim() || '0', 10);
+
 								return { 
 									title, 
 									available, 
@@ -938,7 +941,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								return err
 							}
 
-							if productDetailsResults.Sold == "" || productDetailsResults.Sold == "0" {
+							if productDetailsResults.Sold == 0 {
 								return nil
 							}
 
@@ -975,7 +978,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		close(errCh)
 		cancelBrowser()
 
-		// Collect and Send Final Data
+		// Collect, sorting, and Send Final Data
+		sort.Slice(products, func(i, j int) bool {
+			return products[i].ProductSold > products[j].ProductSold
+		})
 		for _, url := range categoryURLs {
 			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
 				CategoryName: extractCategoryName(url),
