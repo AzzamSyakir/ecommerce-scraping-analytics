@@ -552,6 +552,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			chromedp.Flag("disable-extensions", true),
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
+			chromedp.Flag("no-sandbox", true),
 		)...,
 	)
 
