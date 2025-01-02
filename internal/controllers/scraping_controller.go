@@ -752,6 +752,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		// Goroutine for retry product from categories
 		go func() {
 			for productUrl := range retryProductCh {
+				fmt.Println("tes retry product category cihuyy")
 				retryWg.Add(1)
 				go func(url string) {
 					defer retryWg.Done()
@@ -869,21 +870,17 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				defer mu.Unlock()
 
 				for _, categoryUrl := range categoryURLs {
-					fmt.Println("tambah kategori baru", categoryUrl)
 					categoryID := extractCategoryID(categoryUrl)
 					categoryName := extractCategoryName(categoryUrl)
 
-					// Tambahkan nama kategori jika belum ada
 					if _, exists := categoryNamesMap[categoryID]; !exists {
 						categoryNamesMap[categoryID] = categoryName
 					}
 
-					// Tambahkan kategori ke map jika belum ada
 					if _, exists := categoryProductsMap[categoryID]; !exists {
 						categoryProductsMap[categoryID] = make(map[string]entity.Product)
 					}
 
-					// Masukkan produk ke kategori yang sesuai
 					productID := extractProductID(productUrl)
 					if _, exists := categoryProductsMap[categoryID][productID]; !exists {
 						categoryProductsMap[categoryID][productID] = entity.Product{
@@ -896,7 +893,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						}
 					}
 
-					// Produk sudah dimasukkan ke kategori yang relevan, hentikan loop
 					break
 				}
 			}(product)
@@ -926,18 +922,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						chromedp.Navigate(url),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-							(() => {
-								const detailsElement = document.querySelector('#product-quantity');
-								const priceRaw = document.querySelector('#price')?.textContent.trim() || '';
-								const title = document.querySelector('#product-title > h1')?.textContent.trim() || '';
-								const available = detailsElement?.textContent.split(',')[0]?.trim() || '';
-								const sold = detailsElement?.querySelector('b')?.textContent.trim() || '0';
-								return { 
-									title, 
-									available, 
-									sold, 
-									price: priceRaw ? '$' + priceRaw : '' 
-								};
+								(() => {
+								const details = document.querySelector('#product-quantity');
+								const title = document.querySelector('#product-title h1')?.textContent.trim();
+								const priceRaw = document.querySelector('#price')?.textContent.trim();
+								const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
+								const available = details?.textContent.split(',')[0]?.trim();
+								return { title, available, sold, price: priceRaw };
 							})()
 						`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
@@ -995,7 +986,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 
 		// Arrange data, sort, and save it to a slice
 		for categoryID, productMap := range categoryProductsMap {
-			// Gunakan map sebagai set untuk menghindari duplikasi produk
 			uniqueProducts := make(map[string]entity.Product)
 
 			for _, product := range productMap {
@@ -1019,8 +1009,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				CategoryID:   categoryID,
 				Products:     products,
 			})
-			fmt.Println("Arrange data and save to slice for category:", categoryName)
-			fmt.Println(" product ", products)
 		}
 
 		message := "responseSuccess"
