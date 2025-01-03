@@ -961,18 +961,21 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						}
 
 						js := `
-								(() => {
-										const details = document.querySelector('#product-quantity');
-										let title = document.querySelector('#product-title h1')?.textContent.trim() || '';
-										const priceRaw = document.querySelector('#price')?.textContent.trim();
-										const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
-										const available = details?.textContent.split(',')[0]?.trim();
-
-										title = title.replace(/\t.*\d+(\.\d+)?\s+\d+\s+ratings$/, '').trim();
-
-										return { title, available, sold, price: priceRaw };
-								})()
-						`
+							(() => {
+									const details = document.querySelector('#product-quantity');
+									const titleElement = document.querySelector('#product-title h1');
+									const title = Array.from(titleElement.childNodes)
+											.filter(node => node.nodeType === Node.TEXT_NODE)
+											.map(node => node.textContent.trim())
+											.join(' ')
+											.replace(/\s+/g, ' ')
+											.trim();
+									const priceRaw = document.querySelector('#price')?.textContent.trim();
+									const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
+									const available = details?.textContent.split(',')[0]?.trim();
+									return { title, available, sold, price: priceRaw };
+							})()
+					`
 						err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 						if err != nil {
 							return err
@@ -1041,18 +1044,21 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						chromedp.Navigate(productUrl),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-								(() => {
-										const details = document.querySelector('#product-quantity');
-										let title = document.querySelector('#product-title h1')?.textContent.trim() || '';
-										const priceRaw = document.querySelector('#price')?.textContent.trim();
-										const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
-										const available = details?.textContent.split(',')[0]?.trim();
-
-										title = title.replace(/\t.*\d+(\.\d+)?\s+\d+\s+ratings$/, '').trim();
-
-										return { title, available, sold, price: priceRaw };
-								})()
-						`
+							(() => {
+									const details = document.querySelector('#product-quantity');
+									const titleElement = document.querySelector('#product-title h1');
+									const title = Array.from(titleElement.childNodes)
+											.filter(node => node.nodeType === Node.TEXT_NODE)
+											.map(node => node.textContent.trim())
+											.join(' ')
+											.replace(/\s+/g, ' ')
+											.trim();
+									const priceRaw = document.querySelector('#price')?.textContent.trim();
+									const sold = parseInt(details?.querySelector('b')?.textContent.trim() || '0', 10);
+									const available = details?.textContent.split(',')[0]?.trim();
+									return { title, available, sold, price: priceRaw };
+							})()
+					`
 							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 							if err != nil {
 								return err
