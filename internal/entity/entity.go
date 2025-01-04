@@ -6,12 +6,19 @@ type Product struct {
 	ProductURL    string  `json:"product_url"`
 	ProductPrice  string  `json:"product_price"`
 	ProductStock  string  `json:"product_stock,omitempty"`
-	ProductSold   string  `json:"product_sold,omitempty"`
+	ProductSold   int     `json:"product_sold,omitempty"`
 	ProductRating float64 `json:"product_rating,omitempty"`
 }
 
 type CategoryProducts struct {
-	CategoryID   string    `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Products     []Product `json:"products"`
+	CategoryID        string    `json:"category_id"`
+	CategoryName      string    `json:"category_name"`
+	Products          []Product `json:"products"`
+	ItemsSold         int       `json:"item_sold"`
+	ProductsSoldCount int       `json:"product_listing_sold"`
+}
+
+type ProductWithCategory struct {
+	CategoryURL string
+	Product     Product
 }

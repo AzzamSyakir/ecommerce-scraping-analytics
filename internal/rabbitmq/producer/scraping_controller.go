@@ -1,7 +1,7 @@
 package producer
 
 import (
-	"ecommerce-scraping-analytics/internal/entity"
+	"ecommerce-scraping-analytics/internal/model/response"
 	"encoding/json"
 	"fmt"
 
@@ -15,7 +15,7 @@ func CreateNewScrapingControllerProducer() *ScrapingControllerProducer {
 	return mainControllerProducer
 }
 
-func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbitMQ *amqp.Channel, data []entity.CategoryProducts) error {
+func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbitMQ *amqp.Channel, data *response.SellerProductResponse) error {
 	queueName := "ProductSellerResponseQueue"
 	payload := map[string]interface{}{
 		"message": msg,

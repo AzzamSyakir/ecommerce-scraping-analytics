@@ -3,9 +3,10 @@ package consumer
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/controllers"
-	"ecommerce-scraping-analytics/internal/entity"
+	"ecommerce-scraping-analytics/internal/model/response"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -13,8 +14,8 @@ type MainControllerConsumer struct {
 	Controller *controllers.MainController
 }
 type RabbitMQPayload struct {
-	Message string                    `json:"message"`
-	Data    []entity.CategoryProducts `json:"data"`
+	Message string                         `json:"message"`
+	Data    response.SellerProductResponse `json:"data"`
 }
 
 func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
@@ -48,12 +49,10 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 
 	for msg := range msgs {
 		var payload RabbitMQPayload
-
 		// Parse JSON message
 		err := json.Unmarshal(msg.Body, &payload)
 		if err != nil {
-			fmt.Printf("Failed to unmarshal message: %v\n", err)
-			continue
+			log.Fatal("Failed to unmarshal message: ", err)
 		}
 
 		// Handle error response
@@ -86,7 +85,7 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				continue
 			}
 
-			var responseData []entity.CategoryProducts
+			var responseData *response.SellerProductResponse
 			err = json.Unmarshal(dataBytes, &responseData)
 			if err != nil {
 				fmt.Printf("Failed to unmarshal category products: %v\n", err)
