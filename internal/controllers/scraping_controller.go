@@ -746,9 +746,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 										return [...document.querySelectorAll('#product-list-grid > li')]
 												.map(li => {
 														const link = li.querySelector('div.product-details > h2 > a');
-														return link ? { href: link.href, text: link.textContent.trim() } : null;
+														return link ? { href: link.href, text: link.textContent.trim() } : '';
 												})
-												.filter(item => item !== null);
+												.filter(item => item !== '');
 								})();
 						`
 						if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
