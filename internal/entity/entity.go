@@ -11,9 +11,11 @@ type Product struct {
 }
 
 type CategoryProducts struct {
-	CategoryID   string    `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Products     []Product `json:"products"`
+	CategoryID        string    `json:"category_id"`
+	CategoryName      string    `json:"category_name"`
+	Products          []Product `json:"products"`
+	ItemsSold         int       `json:"item_sold"`
+	ProductsSoldCount int       `json:"product_listing_sold"`
 }
 
 type ProductWithCategory struct {

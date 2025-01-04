@@ -41,7 +41,6 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageAllS
 	for msg := range msgs {
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
-			log.Println("Expected message received. Starting scraping process...")
 			scrapingControllerConsumer.Controller.ScrapeAllSellerProducts(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)
@@ -80,7 +79,6 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageSold
 	for msg := range msgs {
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
-			log.Println("Expected message received. Starting scraping process...")
 			scrapingControllerConsumer.Controller.ScrapeSoldSellerProducts(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)

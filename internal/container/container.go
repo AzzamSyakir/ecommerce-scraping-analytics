@@ -7,6 +7,7 @@ import (
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"ecommerce-scraping-analytics/internal/routes"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -23,6 +24,11 @@ func NewContainer() *Container {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file: ", err)
+	}
+	if os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(gin.DebugMode)
 	}
 	dbConfig := config.NewDBConfig()
 	if dbConfig.DB != nil {
