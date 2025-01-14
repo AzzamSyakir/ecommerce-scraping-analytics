@@ -12,5 +12,18 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq/
 
+  app:
+    build:
+      context: ../
+      dockerfile: ./deployments/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    # depends_on:
+    #   - rabbitmq
+
+
 volumes:
   rabbitmq-data:

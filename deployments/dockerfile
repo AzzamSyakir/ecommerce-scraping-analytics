@@ -1,15 +1,21 @@
+#start from golang base image
 FROM golang:alpine
+
+# Install Chromium
+RUN apk add --no-cache chromium
 
 # Set destination for COPY
 WORKDIR /app
+
+#install dependencies
+RUN apk update
 
 #copy source & Download Go modules
 COPY . .
 RUN go mod download
 
 #build and run code
-RUN go build -o /go-ecommerce-scraping-analytics
+RUN go build cmd/main.go
 
 EXPOSE 8080
-
-CMD [ "/go-ecommerce-scraping-analytics" ]
+CMD ["./main"]
