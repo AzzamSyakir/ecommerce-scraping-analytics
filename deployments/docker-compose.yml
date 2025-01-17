@@ -31,9 +31,9 @@ services:
       rabbitmq:
         condition: service_healthy
     
-  portainer_agent:
+  portainer-agent:
       image: portainer/agent:latest
-      container_name: portainer_agent
+      container_name: portainer-agent
       restart: unless-stopped
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
