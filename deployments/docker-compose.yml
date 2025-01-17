@@ -11,19 +11,37 @@ services:
       RABBITMQ_DEFAULT_PASS: "password"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq/
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   app:
     build:
       context: ../
       dockerfile: ./deployments/Dockerfile
+    container_name: app-container
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       RABBITMQ_HOST: rabbitmq
-    # depends_on:
-    #   - rabbitmq
-
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    
+  portainer_agent:
+      image: portainer/agent:latest
+      container_name: portainer_agent
+      restart: unless-stopped
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+        - /var/lib/docker/volumes:/var/lib/docker/volumes
+        - /:/host
+      ports:
+        - "9001:9001"
 
 volumes:
   rabbitmq-data:
+  portainer-data:
