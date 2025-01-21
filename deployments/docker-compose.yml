@@ -30,7 +30,7 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-    
+
   portainer-agent:
       image: portainer/agent:latest
       container_name: portainer-agent
