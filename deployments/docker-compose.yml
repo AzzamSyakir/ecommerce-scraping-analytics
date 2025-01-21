@@ -7,15 +7,21 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: "user"
-      RABBITMQ_DEFAULT_PASS: "password"
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_USE_LONGNAME: no
+      RABBITMQ_MAX_MESSAGES: 1000
+      RABBITMQ_MAX_MESSAGES_PER_CONNECTION: 100
+      RABBITMQ_DISK_ALERT_THRESHOLD: 10%
+      RABBITMQ_DISK_CHECKERS_THRESHOLD: 5%
+      RABBITMQ_DISK_ERROR_THRESHOLD: 5%
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq/
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 30s
+      timeout: 30s
+      retries: 10
 
   app:
     build:
@@ -44,4 +50,3 @@ services:
 
 volumes:
   rabbitmq-data:
-  portainer-data:
