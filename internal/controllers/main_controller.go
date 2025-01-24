@@ -77,36 +77,8 @@ func (mainController *MainController) GetAllSellerProducts(c *gin.Context) {
 }
 func (mainController *MainController) GetSoldSellerProducts(c *gin.Context) {
 	seller := c.Param("seller")
-	RabbitMQConnection := mainController.Rabbitmq.Connection
-	rabbitMqChannel, err := RabbitMQConnection.Channel()
-	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
-		return
-	}
-	defer rabbitMqChannel.Close()
 
-	_, err = rabbitMqChannel.QueueDeclare(
-		"GetSoldSellerProduct Queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
-		return
-	}
-
-	mainController.Producer.CreateMessageGetSoldSellerProducts(rabbitMqChannel, seller)
+	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
 	var zeroResponse Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
