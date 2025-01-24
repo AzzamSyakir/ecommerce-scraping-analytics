@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -715,6 +716,12 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 }
 
 func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller string) {
+	// timer and duration
+	startTime := time.Now()
+	var categoriesDuration time.Duration
+	var productsDuration time.Duration
+	var productDetailsDuration time.Duration
+	var productDetailsDurationRetry time.Duration
 	extractProductID := func(url string) string {
 		re := regexp.MustCompile(`/p/([0-9]+)`)
 		matches := re.FindStringSubmatch(url)
@@ -763,7 +770,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
 			chromedp.Flag("disable-plugins", true),
-			chromedp.Flag("disable-background-timer-throttling", true),
 			chromedp.Flag("disable-extensions", true),
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
@@ -778,17 +784,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
 	// Channel and pool definitions
-	maxWorker := 50
 	categoryCh := make(chan string)
 	productCh := make(chan entity.ProductWithCategory)
 	done := make(chan bool)
-	categoryPool := make(chan struct{}, maxWorker)
-	productListpool := make(chan struct{}, maxWorker)
-	productDetailPool := make(chan struct{}, maxWorker)
-	retryCategoryCh := make(chan string, maxWorker)
-	retryProductCh := make(chan string, maxWorker)
-	retryProductDetailCh := make(chan entity.ProductWithCategory, maxWorker)
-	retryPool := make(chan struct{}, maxWorker)
+	retryCategoryCh := make(chan string)
+	retryProductCh := make(chan string)
+	retryProductDetailCh := make(chan entity.ProductWithCategory)
 	errCh := make(chan error, 1)
 
 	// handling error
@@ -803,13 +804,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	//Scrape Categories
 	var categoryURLs []string
 	go func() {
+		startTime := time.Now()
 		var retryWg sync.WaitGroup
 		defer func() {
 			close(categoryCh)
-			close(categoryPool)
 		}()
-		categoryPool <- struct{}{}
-		defer func() { <-categoryPool }()
 		baseUrl := "http://%s.ecrater.com%s"
 		sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
 		err := chromedp.Run(browserCtx,
@@ -848,6 +847,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			errCh <- err
 			return
 		}
+		categoriesDuration = time.Since(startTime)
 		for _, url := range categoryURLs {
 			categoryCh <- url
 		}
@@ -857,8 +857,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				retryWg.Add(1)
 				go func(url string) {
 					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
 					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
 					defer cancel()
 					err := chromedp.Run(retryErrProductCtx,
@@ -895,9 +893,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	}()
 	//Scrape Products from Categories
 	go func() {
+		startTime := time.Now()
 		var (
 			wg                     sync.WaitGroup
-			retryWg                sync.WaitGroup
 			categoryProductResults []struct {
 				Href string `json:"href"`
 			}
@@ -905,7 +903,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		defer func() {
 			wg.Wait()
 			close(productCh)
-			close(productListpool)
 		}()
 		// goroutine scrape product from categories
 		for url := range categoryCh {
@@ -913,8 +910,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			wg.Add(1)
 			go func(url string) {
 				defer wg.Done()
-				productListpool <- struct{}{}
-				defer func() { <-productListpool }()
 
 				var nextPageHref string
 				var currentPageResults []struct {
@@ -1018,100 +1013,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			}(categoryUrl)
 		}
 
-		// Goroutine for retry scrape product from categories
-		go func() {
-			for productUrl := range retryProductCh {
-				retryWg.Add(1)
-				go func(url string) {
-					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
-					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
-					defer cancel()
-					var nextPageHref string
-					var currentPageResults []struct {
-						Href string `json:"href"`
-					}
-					err := chromedp.Run(retryErrProductCtx,
-						network.SetCacheDisabled(false),
-						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-						network.Enable(),
-						network.SetExtraHTTPHeaders(network.Headers(headers)),
-						chromedp.Navigate(url),
-						chromedp.ActionFunc(func(ctx context.Context) error {
-							// Scrape product links from the current page
-							jsScrapeProduct := `
-									(() => {
-											return [...document.querySelectorAll('#product-list-grid > li')]
-													.map(li => {
-															const link = li.querySelector('div.product-details > h2 > a');
-															return link ? { href: link.href, text: link.textContent.trim() } : '';
-													})
-													.filter(item => item !== '');
-									})();
-							`
-							if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-								return err
-							}
-							categoryProductResults = append(categoryProductResults, currentPageResults...)
-							// Check if the next page button exists and extract its href
-							jsCheckNextPage := `
-									(() => {
-											const nextPageBtn = document.querySelector('#page-header-controls > ul > li > a');
-											return nextPageBtn ? nextPageBtn.href : "";
-									})();
-							`
-							if err := chromedp.Evaluate(jsCheckNextPage, &nextPageHref).Do(ctx); err != nil {
-								return err
-							}
-
-							// If a next page is available, navigate to it and repeat scraping
-							if nextPageHref != "" {
-								nextPageHref = fmt.Sprintf("%s&perpage=80", nextPageHref)
-								err := chromedp.Navigate(nextPageHref).Do(ctx)
-								if err != nil {
-									return err
-								}
-
-								// Wait for the product list grid to be visible
-								if err := chromedp.WaitVisible("#product-list-grid", chromedp.ByID).Do(ctx); err != nil {
-									return err
-								}
-
-								// Recursively scrape the next page
-								return chromedp.ActionFunc(func(ctx context.Context) error {
-									if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-										return err
-									}
-									categoryProductResults = append(categoryProductResults, currentPageResults...)
-									return nil
-								}).Do(ctx)
-							}
-
-							return nil
-						}),
-					)
-					if err != nil {
-						errCh <- err
-						return
-					}
-					for _, productResult := range categoryProductResults {
-						productCh <- entity.ProductWithCategory{
-							CategoryURL: url,
-							Product: entity.Product{
-								ProductID:  extractProductID(productResult.Href),
-								ProductURL: productResult.Href,
-							},
-						}
-					}
-				}(productUrl)
-			}
-		}()
-
-		retryWg.Wait()
+		productsDuration = time.Since(startTime)
 	}()
 	// Scrape Product Details
 	go func() {
+		var startTimeProductDetails time.Time
+		var startTimeProductDetailsRetry time.Time
 		var (
 			wg                  sync.WaitGroup
 			retryWg             sync.WaitGroup
@@ -1124,10 +1031,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		for productCategory := range productCh {
 			wg.Add(1)
 			go func(productCategory entity.ProductWithCategory) {
+				startTimeProductDetails = time.Now()
 				defer wg.Done()
-				productDetailPool <- struct{}{}
-				defer func() { <-productDetailPool }()
-
 				productDetailCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
 
@@ -1241,15 +1146,14 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				}
 			}(productCategory)
 		}
+
 		// Goroutine for retry productDetail
 		go func() {
 			for productUrl := range retryProductDetailCh {
 				retryWg.Add(1)
 				go func(productCategory entity.ProductWithCategory) {
+					startTimeProductDetailsRetry = time.Now()
 					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
-
 					var productDetailsResults struct {
 						Title     string `json:"title"`
 						Available string `json:"available"`
@@ -1338,16 +1242,16 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				}(productUrl)
 			}
 		}()
-
-		// wait for all goroutine
+		// wait for goroutine
 		wg.Wait()
+		productDetailsDuration = time.Since(startTimeProductDetails)
 		retryWg.Wait()
+		productDetailsDurationRetry = time.Since(startTimeProductDetailsRetry)
 		// close ctx, channel and pool
 		close(retryCategoryCh)
 		close(retryProductCh)
 		close(retryProductDetailCh)
 		close(done)
-		close(productDetailPool)
 		close(errCh)
 		cancelBrowser()
 
@@ -1396,6 +1300,15 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			ItemsSold:         totalItemsSold,
 			ProductsSoldCount: totalProductsSold,
 		}
+		// Calculate the duration
+		totalDuration := time.Since(startTime)
+
+		// Print the total time taken
+		fmt.Println("Total time taken:", totalDuration)
+		fmt.Println("Total time for scraping categories:", categoriesDuration)
+		fmt.Println("Total time for scraping products list:", productsDuration)
+		fmt.Println("Total time for scraping product details:", productDetailsDuration)
+		fmt.Println("Total time for scraping product details retry :", productDetailsDurationRetry)
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
 	}()
