@@ -42,7 +42,7 @@ func (*MainControllerProducer) CreateMessageGetAllSellerProducts(channelRabbitMQ
 }
 
 func (*MainControllerProducer) CreateMessageGetSoldSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
-	queueName := "GetSoldSellerProduct Queue"
+	queueName := "GetSoldSellerProductQueue"
 	payload := map[string]interface{}{
 		"message": "Start Scraping",
 		"seller":  seller,

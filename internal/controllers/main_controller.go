@@ -77,7 +77,6 @@ func (mainController *MainController) GetAllSellerProducts(c *gin.Context) {
 }
 func (mainController *MainController) GetSoldSellerProducts(c *gin.Context) {
 	seller := c.Param("seller")
-
 	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
 	var zeroResponse Response[map[string]interface{}]
