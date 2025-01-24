@@ -19,22 +19,16 @@ type RabbitMQPayload struct {
 }
 
 func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
-	queueName := "ProductSellerResponseQueue"
-	q, err := rabbitMQConfig.Channel.QueueDeclare(
-		queueName,
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		fmt.Printf("Failed to declare a queue: %v\n", err)
-		return
+	expectedQueueName := "ProductSellerResponseQueue"
+	var queueName string
+	for _, name := range rabbitMQConfig.Queue {
+		if expectedQueueName == name.Name {
+			queueName = name.Name
+			break
+		}
 	}
-
 	msgs, err := rabbitMQConfig.Channel.Consume(
-		q.Name,
+		queueName,
 		"ConsumerListener",
 		true,
 		false,
