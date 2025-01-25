@@ -718,6 +718,7 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller string) {
 	// timer and duration
 	startTime := time.Now()
+	fmt.Printf("akses di scraping controller: %d ns\n", startTime.UnixNano())
 	var categoriesDuration time.Duration
 	var productsDuration time.Duration
 	var productDetailsDuration time.Duration
@@ -1150,9 +1151,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		// Goroutine for retry productDetail
 		go func() {
 			for productUrl := range retryProductDetailCh {
+				startTimeProductDetailsRetry = time.Now()
 				retryWg.Add(1)
 				go func(productCategory entity.ProductWithCategory) {
-					startTimeProductDetailsRetry = time.Now()
 					defer retryWg.Done()
 					var productDetailsResults struct {
 						Title     string `json:"title"`
@@ -1309,6 +1310,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		fmt.Println("Total time for scraping products list:", productsDuration)
 		fmt.Println("Total time for scraping product details:", productDetailsDuration)
 		fmt.Println("Total time for scraping product details retry :", productDetailsDurationRetry)
+		fmt.Printf("finished scraping at time : %d ns\n", time.Now().UnixNano())
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
 	}()

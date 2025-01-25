@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 type MainControllerConsumer struct {
@@ -55,7 +56,7 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 			errorMessage = strings.TrimSpace(errorMessage)
 
 			if errorMessage == "" {
-				mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+				mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 					Code:    500,
 					Message: "Error message is empty after 'responseError'",
 					Data:    payload.Data,
@@ -63,7 +64,7 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				continue
 			}
 
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    400,
 				Message: fmt.Sprintf("Error occurred: %s", errorMessage),
 				Data:    payload.Data,
@@ -85,14 +86,14 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				fmt.Printf("Failed to unmarshal category products: %v\n", err)
 				continue
 			}
-
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			fmt.Printf("akses di consumer main rabbitmq : %d ns\n", time.Now().UnixNano())
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    200,
 				Message: "Success",
 				Data:    responseData,
 			}
 		} else {
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    400,
 				Message: "Unknown message type",
 				Data:    nil,
