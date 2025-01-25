@@ -1,21 +1,21 @@
 #start from golang base image
-FROM golang:alpine
-
-# Install Chromium
-RUN apk add --no-cache chromium
-
-# Set destination for COPY
+FROM golang:alpine AS builder
 WORKDIR /app
 
 #install dependencies
 RUN apk update
+RUN go install github.com/air-verse/air@latest
 
-#copy source & Download Go modules
+
+#copy source, Download Go modules & build the code 
 COPY . .
 RUN go mod download
+RUN go clean -cache
+RUN go build ./cmd/main.go
+FROM chromedp/headless-shell:latest
 
-#build and run code
-RUN go build cmd/main.go
+WORKDIR /app
+COPY --from=builder /app/main .
+COPY --from=builder /app/.env .
 
-EXPOSE 8080
-CMD ["./main"]
+ENTRYPOINT [ "./main" ]
