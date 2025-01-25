@@ -1,50 +1,52 @@
 package config
 
 import (
+	"database/sql"
 	"fmt"
-	"os"
-	"strconv"
-
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 type DatabaseConfig struct {
-	DB *GormDatabase
+	DB *PostgresDatabase
 }
 
-type GormDatabase struct {
-	Connection *gorm.DB
+type PostgresDatabase struct {
+	Connection *sql.DB
 }
 
-func NewDBConfig() *DatabaseConfig {
+func NewDBConfig(env *EnvConfig) *DatabaseConfig {
 	databaseConfig := &DatabaseConfig{
-		DB: NewDatabaseConnection(),
+		DB: NewDatabaseConnection(env),
 	}
 	return databaseConfig
 }
 
-func NewDatabaseConnection() *GormDatabase {
-	var (
-		dbNeed           = os.Getenv("POSTGRES_NEED")
-		postgresHost     = os.Getenv("POSTGRES_HOST")
-		postgresPort     = os.Getenv("POSTGRES_PORT")
-		postgresUser     = os.Getenv("POSTGRES_USER")
-		postgresPassword = os.Getenv("POSTGRES_PASSWORD")
-		postgresDb       = os.Getenv("POSTGRES_DB")
-	)
-	postgresPortInt, err := strconv.Atoi(postgresPort)
-	if err != nil {
-		panic(err)
-	}
-	if dbNeed == "true" {
-		sqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", postgresHost, postgresPortInt, postgresUser, postgresPassword, postgresDb)
-		connection, err := gorm.Open(postgres.Open(sqlInfo), &gorm.Config{})
+func NewDatabaseConnection(envConfig *EnvConfig) *PostgresDatabase {
+	if envConfig.Db.DBNeed == "true" {
+		var url string
+		if envConfig.Db.Password == "" {
+			url = fmt.Sprintf(
+				"postgresql://%s@%s:%s/%s",
+				envConfig.Db.User,
+				envConfig.Db.Host,
+				envConfig.Db.Port,
+				envConfig.Db.Database,
+			)
+		} else {
+			url = fmt.Sprintf(
+				"postgresql://%s:%s@%s:%s/%s?sslmode=disable",
+				envConfig.Db.User,
+				envConfig.Db.Password,
+				envConfig.Db.Host,
+				envConfig.Db.Port,
+				envConfig.Db.Database,
+			)
+		}
+		connection, err := sql.Open("postgres", url)
 		if err != nil {
 			panic(err)
 		}
 
-		Db := &GormDatabase{
+		Db := &PostgresDatabase{
 			Connection: connection,
 		}
 		return Db

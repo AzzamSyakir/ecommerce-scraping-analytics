@@ -5,16 +5,22 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	_ "net/http/pprof"
 )
 
 func main() {
-	go func() {
-		log.Println("Starting pprof server on localhost:6060")
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
 
 	fmt.Println("App Started")
-	container.NewContainer()
+	container := container.NewContainer()
+	// http server
+	address := fmt.Sprintf(
+		"%s:%s",
+		"0.0.0.0",
+		container.Env.App.AppPort,
+	)
+	listenAndServeErr := http.ListenAndServe(address, container.Route.Router)
+	if listenAndServeErr != nil {
+		log.Fatalf("failed to serve HTTP: %v", listenAndServeErr)
+	}
 	fmt.Println("app finish")
+
 }

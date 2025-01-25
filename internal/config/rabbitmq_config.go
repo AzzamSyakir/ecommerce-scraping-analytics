@@ -12,9 +12,10 @@ type RabbitMqConfig struct {
 	Connection *amqp.Connection
 	Channel    *amqp.Channel
 	Queue      []*amqp.Queue
+	Env        *EnvConfig
 }
 
-func NewRabbitMqConfig() *RabbitMqConfig {
+func NewRabbitMqConfig(env *EnvConfig) *RabbitMqConfig {
 	connection, err := RabbitMQConnection()
 	if err != nil {
 		panic("failed to establish RabbitMQ connection: " + err.Error())
@@ -31,6 +32,7 @@ func NewRabbitMqConfig() *RabbitMqConfig {
 		Connection: connection,
 		Channel:    channel,
 		Queue:      queue,
+		Env:        env,
 	}
 	return rabbitMqConfig
 }
