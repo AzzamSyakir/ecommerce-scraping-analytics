@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 type MainControllerConsumer struct {
@@ -19,22 +20,16 @@ type RabbitMQPayload struct {
 }
 
 func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
-	queueName := "ProductSellerResponseQueue"
-	q, err := rabbitMQConfig.Channel.QueueDeclare(
-		queueName,
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		fmt.Printf("Failed to declare a queue: %v\n", err)
-		return
+	expectedQueueName := "ProductSellerResponseQueue"
+	var queueName string
+	for _, name := range rabbitMQConfig.Queue {
+		if expectedQueueName == name.Name {
+			queueName = name.Name
+			break
+		}
 	}
-
 	msgs, err := rabbitMQConfig.Channel.Consume(
-		q.Name,
+		queueName,
 		"ConsumerListener",
 		true,
 		false,
@@ -61,7 +56,7 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 			errorMessage = strings.TrimSpace(errorMessage)
 
 			if errorMessage == "" {
-				mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+				mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 					Code:    500,
 					Message: "Error message is empty after 'responseError'",
 					Data:    payload.Data,
@@ -69,7 +64,7 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				continue
 			}
 
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    400,
 				Message: fmt.Sprintf("Error occurred: %s", errorMessage),
 				Data:    payload.Data,
@@ -91,14 +86,14 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				fmt.Printf("Failed to unmarshal category products: %v\n", err)
 				continue
 			}
-
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			fmt.Printf("akses di consumer main rabbitmq : %d ns\n", time.Now().UnixNano())
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    200,
 				Message: "Success",
 				Data:    responseData,
 			}
 		} else {
-			mainController.Controller.ResponseChannel <- controllers.Response[interface{}]{
+			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    400,
 				Message: "Unknown message type",
 				Data:    nil,

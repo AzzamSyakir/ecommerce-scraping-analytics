@@ -3,22 +3,21 @@ package controllers
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
+	"encoding/json"
+	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-)
+	"ecommerce-scraping-analytics/internal/model/response"
+	"time"
 
-type Response[T any] struct {
-	Code    int    `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
-	Data    T      `json:"data,omitempty"`
-}
+	"github.com/gorilla/mux"
+)
 
 type MainController struct {
 	LogicController *LogicController
 	Rabbitmq        *config.RabbitMqConfig
 	Producer        *producer.MainControllerProducer
-	ResponseChannel chan Response[interface{}]
+	ResponseChannel chan response.Response[interface{}]
 }
 
 func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, producer *producer.MainControllerProducer) *MainController {
@@ -26,20 +25,17 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 		LogicController: logic,
 		Rabbitmq:        rabbitMq,
 		Producer:        producer,
-		ResponseChannel: make(chan Response[interface{}], 1),
+		ResponseChannel: make(chan response.Response[interface{}], 1),
 	}
 }
 
-func (mainController *MainController) GetAllSellerProducts(c *gin.Context) {
-	seller := c.Param("seller")
-	RabbitMQConnection := mainController.Rabbitmq.Connection
-	rabbitMqChannel, err := RabbitMQConnection.Channel()
+func (mainController *MainController) GetAllSellerProducts(writer http.ResponseWriter, reader *http.Request) {
+	seller := reader.URL.Query().Get("seller")
+	rabbitMQConnection := mainController.Rabbitmq.Connection
+	rabbitMqChannel, err := rabbitMQConnection.Channel()
 	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
+		writer.WriteHeader(http.StatusBadRequest)
+		writer.Write([]byte(err.Error()))
 		return
 	}
 	defer rabbitMqChannel.Close()
@@ -53,70 +49,46 @@ func (mainController *MainController) GetAllSellerProducts(c *gin.Context) {
 		nil,
 	)
 	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
+		writer.WriteHeader(http.StatusBadRequest)
+		writer.Write([]byte(err.Error()))
 		return
 	}
 
 	mainController.Producer.CreateMessageGetAllSellerProducts(rabbitMqChannel, seller)
 	responseData := <-mainController.ResponseChannel
-	var zeroResponse Response[map[string]interface{}]
+	var zeroResponse response.Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
-		c.JSON(responseData.Code, responseData)
+		writer.WriteHeader(responseData.Code)
+		response.NewResponse(writer, &responseData)
 	} else {
-		result := &Response[map[string]interface{}]{
+		result := &response.Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}
-		c.JSON(result.Code, result)
+		response.NewResponse(writer, result)
 		return
 	}
 }
-func (mainController *MainController) GetSoldSellerProducts(c *gin.Context) {
-	seller := c.Param("seller")
-	RabbitMQConnection := mainController.Rabbitmq.Connection
-	rabbitMqChannel, err := RabbitMQConnection.Channel()
-	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
-		return
-	}
-	defer rabbitMqChannel.Close()
 
-	_, err = rabbitMqChannel.QueueDeclare(
-		"GetSoldSellerProduct Queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		result := &Response[map[string]interface{}]{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
-		c.JSON(result.Code, result)
-		return
-	}
-
-	mainController.Producer.CreateMessageGetSoldSellerProducts(rabbitMqChannel, seller)
+func (mainController *MainController) GetSoldSellerProducts(writer http.ResponseWriter, reader *http.Request) {
+	vars := mux.Vars(reader)
+	seller := vars["seller"]
+	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
-	var zeroResponse Response[map[string]interface{}]
+	var zeroResponse response.Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
-		c.JSON(responseData.Code, responseData)
+		fmt.Printf("data di terima di main controller : %d ns\n", time.Now().UnixNano())
+		writer.WriteHeader(responseData.Code)
+		responseJSON, _ := json.Marshal(responseData)
+		writer.Write(responseJSON)
 	} else {
-		result := &Response[map[string]interface{}]{
+		result := &response.Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}
-		c.JSON(result.Code, result)
+		writer.WriteHeader(result.Code)
+		resultJSON, _ := json.Marshal(result)
+		writer.Write(resultJSON)
 		return
 	}
 }

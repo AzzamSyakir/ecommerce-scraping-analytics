@@ -1,12 +1,14 @@
 package controllers
 
-import "gorm.io/gorm"
+import (
+	"database/sql"
+)
 
 type LogicController struct {
-	Db *gorm.DB
+	Db *sql.DB
 }
 
-func NewLogicController(db *gorm.DB) *LogicController {
+func NewLogicController(db *sql.DB) *LogicController {
 	logicController := &LogicController{
 		Db: db,
 	}
