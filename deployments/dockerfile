@@ -6,7 +6,6 @@ WORKDIR /app
 RUN apk update
 RUN go install github.com/air-verse/air@latest
 
-
 #copy source, Download Go modules & build the code 
 COPY . .
 RUN go mod download
@@ -17,5 +16,3 @@ FROM chromedp/headless-shell:latest
 WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/.env .
-
-ENTRYPOINT [ "./main" ]
