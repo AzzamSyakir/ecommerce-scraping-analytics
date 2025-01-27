@@ -36,6 +36,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+    entrypoint:
+      - "./main"
 
   portainer-agent:
       image: portainer/agent:latest
