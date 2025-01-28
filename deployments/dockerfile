@@ -1,18 +1,26 @@
-#start from golang base image
+# Start from Golang base image
 FROM golang:alpine AS builder
 WORKDIR /app
 
-#install dependencies
-RUN apk update
+# Install necessary dependencies
+RUN apk update && apk add --no-cache git
+
+# Install the required Go module
 RUN go install github.com/air-verse/air@latest
 
-#copy source, Download Go modules & build the code 
+# Copy source, download Go modules, and build the code 
 COPY . .
 RUN go mod download
 RUN go clean -cache
-RUN go build ./cmd/main.go
+RUN go build -o main ./cmd/main.go
+
+# Use headless-shell images for lightweight
 FROM chromedp/headless-shell:latest
 
+# Update system and install additional packages
+RUN apt-get update && apt-get upgrade -y && apt-get install -y wget && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy program from builder
 WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/.env .
