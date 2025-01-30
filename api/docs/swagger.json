@@ -1,0 +1,15 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API for automatically scraping product data ecommerce.",
+        "title": "Ecommerce Scraper API",
+        "contact": {
+            "name": "Azzam Syakir",
+            "url": "https://github.com/AzzamSyakir",
+            "email": "azzam.sykir.work@gmail.com"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "paths": {}
+}

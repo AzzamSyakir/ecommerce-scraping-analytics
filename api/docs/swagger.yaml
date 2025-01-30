@@ -1,0 +1,11 @@
+host: localhost:8080
+info:
+  contact:
+    email: azzam.sykir.work@gmail.com
+    name: Azzam Syakir
+    url: https://github.com/AzzamSyakir
+  description: API for automatically scraping product data ecommerce.
+  title: Ecommerce Scraper API
+  version: "1.0"
+paths: {}
+swagger: "2.0"
