@@ -12,9 +12,9 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq/
     healthcheck:
-        test: rabbitmq-diagnostics check_port_connectivity
-        interval: 5s
-        retries: 20
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 5s
+      retries: 20
 
   app:
     build:
@@ -27,9 +27,25 @@ services:
     environment:
       RABBITMQ_HOST: rabbitmq
     depends_on:
-     rabbitmq:
-      condition: service_healthy
-    entrypoint: [ "sh", "-c", "until wget -q --spider --user ${RABBITMQ_USER} --password ${RABBITMQ_PASS} http://rabbitmq:${RABBITMQ_MANAGEMENT_PORT}/api/aliveness-test/%2F; do echo 'Waiting for RabbitMQ...'; sleep 2; done; echo 'RabbitMQ is ready!'; ./main" ]
-
+      rabbitmq:
+        condition: service_healthy
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "until wget -q --spider --user ${RABBITMQ_USER} --password ${RABBITMQ_PASS} http://rabbitmq:${RABBITMQ_MANAGEMENT_PORT}/api/aliveness-test/%2F; do echo 'Waiting for RabbitMQ...'; sleep 2; done; echo 'RabbitMQ is ready!'; ./main",
+      ]
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: swagger-ui
+    restart: unless-stopped
+    ports:
+      - 80:8080
+    depends_on:
+      - app
+    volumes:
+      - ../api/docs/swagger.json:/spec/docs/swagger.json
+    environment:
+      SWAGGER_JSON: /spec/docs/swagger.json
 volumes:
   rabbitmq-data:
