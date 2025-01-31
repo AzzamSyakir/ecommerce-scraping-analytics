@@ -15,7 +15,8 @@ services:
       test: rabbitmq-diagnostics check_port_connectivity
       interval: 5s
       retries: 20
-
+    networks:
+      - app-network
   app:
     build:
       context: ../
@@ -40,12 +41,18 @@ services:
     container_name: swagger-ui
     restart: unless-stopped
     ports:
-      - 80:8080
+      - ${SWAGGER_PORT}:8080
     depends_on:
-      - app
+      - rabbitmq
     volumes:
       - ../api/docs/swagger.json:/spec/docs/swagger.json
     environment:
       SWAGGER_JSON: /spec/docs/swagger.json
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 volumes:
   rabbitmq-data:
