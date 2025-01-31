@@ -3,6 +3,7 @@ package container
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/controllers"
+	"ecommerce-scraping-analytics/internal/middleware"
 	"ecommerce-scraping-analytics/internal/rabbitmq/consumer"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
 	"ecommerce-scraping-analytics/internal/routes"
@@ -18,6 +19,7 @@ type Container struct {
 	Controller *ControllerContainer
 	RabbitMq   *config.RabbitMqConfig
 	Route      *routes.Route
+	Middleware *middleware.Middleware
 }
 
 func NewContainer() *Container {
@@ -38,6 +40,7 @@ func NewContainer() *Container {
 	consumer := consumer.NewConsumerEntrypointInit(rabbitmqConfig, mainController, scrapingController)
 	consumer.ConsumerEntrypointStart()
 	router := mux.NewRouter()
+	middleware := middleware.NewMiddleware()
 	routeConfig := routes.NewRoute(
 		router,
 		logicController,
@@ -51,6 +54,7 @@ func NewContainer() *Container {
 		RabbitMq:   rabbitmqConfig,
 		Route:      routeConfig,
 		Env:        envConfig,
+		Middleware: middleware,
 	}
 	return container
 }
