@@ -3,6 +3,7 @@ package response
 import (
 	"ecommerce-scraping-analytics/internal/entity"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -22,6 +23,7 @@ func NewResponse[T any](w http.ResponseWriter, result *Response[T]) {
 
 	w.WriteHeader(result.Code)
 	encodeErr := json.NewEncoder(w).Encode(result)
+	fmt.Println("header : ", w.Header())
 	if encodeErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
