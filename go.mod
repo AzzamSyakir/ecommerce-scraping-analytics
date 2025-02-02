@@ -3,15 +3,14 @@ module ecommerce-scraping-analytics
 go 1.23.5
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20241110205750-a72e6703cd9b
+	github.com/chromedp/cdproto v0.0.0-20250126231910-1730200a0f74
 	github.com/joho/godotenv v1.5.1
 	github.com/streadway/amqp v1.1.0
 	golang.org/x/sys v0.29.0 // indirect
 )
 
 require (
-	github.com/chromedp/chromedp v0.11.2
-	github.com/swaggo/http-swagger/v2 v2.0.0
+	github.com/chromedp/chromedp v0.12.1
 	github.com/swaggo/swag v1.16.4
 )
 
@@ -21,7 +20,7 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/swaggo/files/v2 v2.0.0 // indirect
+	github.com/rs/cors v1.11.1
 	golang.org/x/tools v0.29.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
