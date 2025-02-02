@@ -12,6 +12,7 @@ func NewMiddleware() *Middleware {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowCredentials: true,
+		AllowedHeaders:   []string{"*"},
 		// Enable Debugging for testing, consider disabling in production
 		Debug: false,
 	})
