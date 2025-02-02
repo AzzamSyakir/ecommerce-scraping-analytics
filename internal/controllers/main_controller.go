@@ -3,7 +3,6 @@ package controllers
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -58,7 +57,6 @@ func (mainController *MainController) GetAllSellerProducts(writer http.ResponseW
 	responseData := <-mainController.ResponseChannel
 	var zeroResponse response.Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
-		writer.WriteHeader(responseData.Code)
 		response.NewResponse(writer, &responseData)
 	} else {
 		result := &response.Response[map[string]interface{}]{
@@ -75,20 +73,16 @@ func (mainController *MainController) GetSoldSellerProducts(writer http.Response
 	seller := vars["seller"]
 	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
+	fmt.Printf("data di terima di main controller : %d ns\n", time.Now().UnixNano())
 	var zeroResponse response.Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
-		fmt.Printf("data di terima di main controller : %d ns\n", time.Now().UnixNano())
-		writer.WriteHeader(responseData.Code)
-		responseJSON, _ := json.Marshal(responseData)
-		writer.Write(responseJSON)
+		response.NewResponse(writer, &responseData)
 	} else {
 		result := &response.Response[map[string]interface{}]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}
-		writer.WriteHeader(result.Code)
-		resultJSON, _ := json.Marshal(result)
-		writer.Write(resultJSON)
+		response.NewResponse(writer, result)
 		return
 	}
 }

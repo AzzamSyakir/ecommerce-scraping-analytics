@@ -57,6 +57,7 @@ const (
 	PermissionsPolicyFeatureChUa                           PermissionsPolicyFeature = "ch-ua"
 	PermissionsPolicyFeatureChUaArch                       PermissionsPolicyFeature = "ch-ua-arch"
 	PermissionsPolicyFeatureChUaBitness                    PermissionsPolicyFeature = "ch-ua-bitness"
+	PermissionsPolicyFeatureChUaHighEntropyValues          PermissionsPolicyFeature = "ch-ua-high-entropy-values"
 	PermissionsPolicyFeatureChUaPlatform                   PermissionsPolicyFeature = "ch-ua-platform"
 	PermissionsPolicyFeatureChUaModel                      PermissionsPolicyFeature = "ch-ua-model"
 	PermissionsPolicyFeatureChUaMobile                     PermissionsPolicyFeature = "ch-ua-mobile"
@@ -74,6 +75,7 @@ const (
 	PermissionsPolicyFeatureControlledFrame                PermissionsPolicyFeature = "controlled-frame"
 	PermissionsPolicyFeatureCrossOriginIsolated            PermissionsPolicyFeature = "cross-origin-isolated"
 	PermissionsPolicyFeatureDeferredFetch                  PermissionsPolicyFeature = "deferred-fetch"
+	PermissionsPolicyFeatureDeferredFetchMinimal           PermissionsPolicyFeature = "deferred-fetch-minimal"
 	PermissionsPolicyFeatureDigitalCredentialsGet          PermissionsPolicyFeature = "digital-credentials-get"
 	PermissionsPolicyFeatureDirectSockets                  PermissionsPolicyFeature = "direct-sockets"
 	PermissionsPolicyFeatureDirectSocketsPrivate           PermissionsPolicyFeature = "direct-sockets-private"
@@ -187,6 +189,8 @@ func (t *PermissionsPolicyFeature) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PermissionsPolicyFeatureChUaArch
 	case PermissionsPolicyFeatureChUaBitness:
 		*t = PermissionsPolicyFeatureChUaBitness
+	case PermissionsPolicyFeatureChUaHighEntropyValues:
+		*t = PermissionsPolicyFeatureChUaHighEntropyValues
 	case PermissionsPolicyFeatureChUaPlatform:
 		*t = PermissionsPolicyFeatureChUaPlatform
 	case PermissionsPolicyFeatureChUaModel:
@@ -221,6 +225,8 @@ func (t *PermissionsPolicyFeature) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PermissionsPolicyFeatureCrossOriginIsolated
 	case PermissionsPolicyFeatureDeferredFetch:
 		*t = PermissionsPolicyFeatureDeferredFetch
+	case PermissionsPolicyFeatureDeferredFetchMinimal:
+		*t = PermissionsPolicyFeatureDeferredFetchMinimal
 	case PermissionsPolicyFeatureDigitalCredentialsGet:
 		*t = PermissionsPolicyFeatureDigitalCredentialsGet
 	case PermissionsPolicyFeatureDirectSockets:

@@ -17,7 +17,7 @@ func main() {
 		"0.0.0.0",
 		container.Env.App.AppPort,
 	)
-	listenAndServeErr := http.ListenAndServe(address, container.Route.Router)
+	listenAndServeErr := http.ListenAndServe(address, container.Middleware.Cors.Handler(container.Route.Router))
 	if listenAndServeErr != nil {
 		log.Fatalf("failed to serve HTTP: %v", listenAndServeErr)
 	}

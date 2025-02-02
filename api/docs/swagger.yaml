@@ -1,0 +1,77 @@
+swagger: "2.0"
+info:
+  title: Ecommerce Scraping Analytics
+  version: "1.0.0"
+host: localhost:8080
+schemes:
+  - http
+paths:
+  /api/get-sold-products/{seller}:
+    get:
+      tags:
+        - default
+      summary: Get sold products
+      parameters:
+        - name: seller
+          in: path
+          required: true
+          type: string
+          x-example: lakuterus
+      responses:
+        200:
+          description: Successful response
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_name:
+                      type: string
+                    sold_count:
+                      type: integer
+          examples:
+            application/json:
+              success: true
+              data:
+                - product_name: "Product A"
+                  sold_count: 100
+
+  /api/get-all-products/{seller}:
+    get:
+      tags:
+        - default
+      summary: Get all products
+      parameters:
+        - name: seller
+          in: path
+          required: true
+          type: string
+          x-example: lakuterus
+      responses:
+        200:
+          description: Successful response
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_name:
+                      type: string
+                    price:
+                      type: number
+          examples:
+            application/json:
+              success: true
+              data:
+                - product_name: "Product B"
+                  price: 150000

@@ -1,0 +1,183 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Ecommerce Scraping Analytics API",
+    "description": "API for scraping data from the Etsy platform. This API provides endpoints to retrieve sold products and all product listings for a seller.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Developer",
+      "email": "azzam.sykir.work@gmail.com"
+    }
+  },
+  "host": "localhost:8080",
+  "basePath": "/",
+  "schemes": ["http", "https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "paths": {
+    "/api/get-sold-products/{seller}": {
+      "get": {
+        "tags": ["Product Listings"],
+        "summary": "Retrieve sold product listings",
+        "description": "Returns a list of sold products for the given seller.",
+        "parameters": [
+          {
+            "name": "seller",
+            "in": "path",
+            "description": "The seller username",
+            "required": true,
+            "type": "string",
+            "x-example": "lakuterus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with the sold product listings",
+            "schema": {
+              "$ref": "#/definitions/SuccessResponse"
+            }
+          }
+        }
+      }
+    },
+    "/api/get-all-products/{seller}": {
+      "get": {
+        "tags": ["Product Listings"],
+        "summary": "Retrieve all products",
+        "description": "This endpoint returns a structured response containing product listings grouped by categories.",
+        "parameters": [
+          {
+            "name": "seller",
+            "in": "path",
+            "description": "The seller username",
+            "required": true,
+            "type": "string",
+            "x-example": "lakuterus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with the product listings",
+            "schema": {
+              "$ref": "#/definitions/SuccessResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "SuccessResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "description": "HTTP status code",
+          "example": 200
+        },
+        "message": {
+          "type": "string",
+          "description": "Response message",
+          "example": "example message success"
+        },
+        "data": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "required": ["code", "message", "data"]
+    },
+    "Data": {
+      "type": "object",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "description": "List of categories",
+          "items": {
+            "$ref": "#/definitions/Category"
+          }
+        },
+        "total_item_sold": {
+          "type": "integer",
+          "description": "Total items sold across categories",
+          "example": 0
+        },
+        "total_product_listing_sold": {
+          "type": "integer",
+          "description": "Total product listings sold across categories",
+          "example": 0
+        }
+      },
+      "required": ["categories", "total_item_sold", "total_product_listing_sold"]
+    },
+    "Category": {
+      "type": "object",
+      "properties": {
+        "category_id": {
+          "type": "string",
+          "description": "Unique identifier of the category",
+          "example": "example_category_id"
+        },
+        "category_name": {
+          "type": "string",
+          "description": "Name of the category",
+          "example": "example_category_name"
+        },
+        "products": {
+          "type": "array",
+          "description": "List of products in this category",
+          "items": {
+            "$ref": "#/definitions/Product"
+          }
+        },
+        "item_sold": {
+          "type": "integer",
+          "description": "Total items sold in this category",
+          "example": 0
+        },
+        "product_listing_sold": {
+          "type": "integer",
+          "description": "Number of product listings sold in this category",
+          "example": 0
+        }
+      },
+      "required": ["category_id", "category_name", "products"]
+    },
+    "Product": {
+      "type": "object",
+      "description": "Structure of a product.",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "Unique identifier of the product",
+          "example": "example_product_id"
+        },
+        "product_title": {
+          "type": "string",
+          "description": "Title or name of the product",
+          "example": "example_product_title"
+        },
+        "product_url": {
+          "type": "string",
+          "description": "URL to the product page",
+          "example": "example_product_url"
+        },
+        "product_price": {
+          "type": "string",
+          "description": "Price of the product",
+          "example": "example_product_price"
+        },
+        "product_stock": {
+          "type": "string",
+          "description": "Stock availability description",
+          "example": "example_product_stock"
+        },
+        "product_sold": {
+          "type": "integer",
+          "description": "Number of units sold",
+          "example": 0
+        }
+      },
+      "required": ["product_id", "product_title", "product_url", "product_price", "product_stock", "product_sold"]
+    }
+  }
+}

@@ -650,6 +650,7 @@ const (
 	BlockedReasonCorpNotSameOriginAfterDefaultedToSameOriginByDip        BlockedReason = "corp-not-same-origin-after-defaulted-to-same-origin-by-dip"
 	BlockedReasonCorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip BlockedReason = "corp-not-same-origin-after-defaulted-to-same-origin-by-coep-and-dip"
 	BlockedReasonCorpNotSameSite                                         BlockedReason = "corp-not-same-site"
+	BlockedReasonSriMessageSignatureMismatch                             BlockedReason = "sri-message-signature-mismatch"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -694,6 +695,8 @@ func (t *BlockedReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = BlockedReasonCorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip
 	case BlockedReasonCorpNotSameSite:
 		*t = BlockedReasonCorpNotSameSite
+	case BlockedReasonSriMessageSignatureMismatch:
+		*t = BlockedReasonSriMessageSignatureMismatch
 
 	default:
 		in.AddError(fmt.Errorf("unknown BlockedReason value: %v", v))
@@ -1447,6 +1450,7 @@ const (
 	CookieExemptionReasonStorageAccess                CookieExemptionReason = "StorageAccess"
 	CookieExemptionReasonTopLevelStorageAccess        CookieExemptionReason = "TopLevelStorageAccess"
 	CookieExemptionReasonScheme                       CookieExemptionReason = "Scheme"
+	CookieExemptionReasonSameSiteNoneCookiesInSandbox CookieExemptionReason = "SameSiteNoneCookiesInSandbox"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -1483,6 +1487,8 @@ func (t *CookieExemptionReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = CookieExemptionReasonTopLevelStorageAccess
 	case CookieExemptionReasonScheme:
 		*t = CookieExemptionReasonScheme
+	case CookieExemptionReasonSameSiteNoneCookiesInSandbox:
+		*t = CookieExemptionReasonSameSiteNoneCookiesInSandbox
 
 	default:
 		in.AddError(fmt.Errorf("unknown CookieExemptionReason value: %v", v))
@@ -2485,6 +2491,7 @@ const (
 	TrustTokenOperationDoneStatusInternalError      TrustTokenOperationDoneStatus = "InternalError"
 	TrustTokenOperationDoneStatusUnknownError       TrustTokenOperationDoneStatus = "UnknownError"
 	TrustTokenOperationDoneStatusFulfilledLocally   TrustTokenOperationDoneStatus = "FulfilledLocally"
+	TrustTokenOperationDoneStatusSiteIssuerLimit    TrustTokenOperationDoneStatus = "SiteIssuerLimit"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -2525,6 +2532,8 @@ func (t *TrustTokenOperationDoneStatus) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = TrustTokenOperationDoneStatusUnknownError
 	case TrustTokenOperationDoneStatusFulfilledLocally:
 		*t = TrustTokenOperationDoneStatusFulfilledLocally
+	case TrustTokenOperationDoneStatusSiteIssuerLimit:
+		*t = TrustTokenOperationDoneStatusSiteIssuerLimit
 
 	default:
 		in.AddError(fmt.Errorf("unknown TrustTokenOperationDoneStatus value: %v", v))

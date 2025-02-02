@@ -28,8 +28,8 @@ type AffectedCookie struct {
 //
 // See: https://chromedevtools.github.io/devtools-protocol/tot/Audits#type-AffectedRequest
 type AffectedRequest struct {
-	RequestID network.RequestID `json:"requestId"` // The unique request id.
-	URL       string            `json:"url,omitempty"`
+	RequestID network.RequestID `json:"requestId,omitempty"` // The unique request id.
+	URL       string            `json:"url"`
 }
 
 // AffectedFrame information about the frame affected by an inspector issue.
@@ -237,6 +237,64 @@ func (t *CookieOperation) UnmarshalJSON(buf []byte) error {
 	return easyjson.Unmarshal(buf, t)
 }
 
+// InsightType represents the category of insight that a cookie issue falls
+// under.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Audits#type-InsightType
+type InsightType string
+
+// String returns the InsightType as string value.
+func (t InsightType) String() string {
+	return string(t)
+}
+
+// InsightType values.
+const (
+	InsightTypeGitHubResource InsightType = "GitHubResource"
+	InsightTypeGracePeriod    InsightType = "GracePeriod"
+	InsightTypeHeuristics     InsightType = "Heuristics"
+)
+
+// MarshalEasyJSON satisfies easyjson.Marshaler.
+func (t InsightType) MarshalEasyJSON(out *jwriter.Writer) {
+	out.String(string(t))
+}
+
+// MarshalJSON satisfies json.Marshaler.
+func (t InsightType) MarshalJSON() ([]byte, error) {
+	return easyjson.Marshal(t)
+}
+
+// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
+func (t *InsightType) UnmarshalEasyJSON(in *jlexer.Lexer) {
+	v := in.String()
+	switch InsightType(v) {
+	case InsightTypeGitHubResource:
+		*t = InsightTypeGitHubResource
+	case InsightTypeGracePeriod:
+		*t = InsightTypeGracePeriod
+	case InsightTypeHeuristics:
+		*t = InsightTypeHeuristics
+
+	default:
+		in.AddError(fmt.Errorf("unknown InsightType value: %v", v))
+	}
+}
+
+// UnmarshalJSON satisfies json.Unmarshaler.
+func (t *InsightType) UnmarshalJSON(buf []byte) error {
+	return easyjson.Unmarshal(buf, t)
+}
+
+// CookieIssueInsight information about the suggested solution to a cookie
+// issue.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Audits#type-CookieIssueInsight
+type CookieIssueInsight struct {
+	Type          InsightType `json:"type"`
+	TableEntryURL string      `json:"tableEntryUrl,omitempty"` // Link to table entry in third-party cookie migration readiness list.
+}
+
 // CookieIssueDetails this information is currently necessary, as the
 // front-end has a difficult time finding a specific cookie. With this, we can
 // convey specific error information without the cookie.
@@ -251,6 +309,7 @@ type CookieIssueDetails struct {
 	SiteForCookies         string                  `json:"siteForCookies,omitempty"`
 	CookieURL              string                  `json:"cookieUrl,omitempty"`
 	Request                *AffectedRequest        `json:"request,omitempty"`
+	Insight                *CookieIssueInsight     `json:"insight,omitempty"` // The recommended solution to the issue.
 }
 
 // MixedContentResolutionStatus [no description].
@@ -459,6 +518,7 @@ const (
 	BlockedByResponseReasonCorpNotSameOriginAfterDefaultedToSameOriginByDip        BlockedByResponseReason = "CorpNotSameOriginAfterDefaultedToSameOriginByDip"
 	BlockedByResponseReasonCorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip BlockedByResponseReason = "CorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip"
 	BlockedByResponseReasonCorpNotSameSite                                         BlockedByResponseReason = "CorpNotSameSite"
+	BlockedByResponseReasonSRIMessageSignatureMismatch                             BlockedByResponseReason = "SRIMessageSignatureMismatch"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -489,6 +549,8 @@ func (t *BlockedByResponseReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = BlockedByResponseReasonCorpNotSameOriginAfterDefaultedToSameOriginByCoepAndDip
 	case BlockedByResponseReasonCorpNotSameSite:
 		*t = BlockedByResponseReasonCorpNotSameSite
+	case BlockedByResponseReasonSRIMessageSignatureMismatch:
+		*t = BlockedByResponseReasonSRIMessageSignatureMismatch
 
 	default:
 		in.AddError(fmt.Errorf("unknown BlockedByResponseReason value: %v", v))
@@ -1253,6 +1315,7 @@ const (
 	FederatedAuthRequestIssueReasonInvalidFieldsSpecified           FederatedAuthRequestIssueReason = "InvalidFieldsSpecified"
 	FederatedAuthRequestIssueReasonRelyingPartyOriginIsOpaque       FederatedAuthRequestIssueReason = "RelyingPartyOriginIsOpaque"
 	FederatedAuthRequestIssueReasonTypeNotMatching                  FederatedAuthRequestIssueReason = "TypeNotMatching"
+	FederatedAuthRequestIssueReasonUIDismissedNoEmbargo             FederatedAuthRequestIssueReason = "UiDismissedNoEmbargo"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -1359,6 +1422,8 @@ func (t *FederatedAuthRequestIssueReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = FederatedAuthRequestIssueReasonRelyingPartyOriginIsOpaque
 	case FederatedAuthRequestIssueReasonTypeNotMatching:
 		*t = FederatedAuthRequestIssueReasonTypeNotMatching
+	case FederatedAuthRequestIssueReasonUIDismissedNoEmbargo:
+		*t = FederatedAuthRequestIssueReasonUIDismissedNoEmbargo
 
 	default:
 		in.AddError(fmt.Errorf("unknown FederatedAuthRequestIssueReason value: %v", v))
@@ -1463,6 +1528,70 @@ type FailedRequestInfo struct {
 	URL            string            `json:"url"`            // The URL that failed to load.
 	FailureMessage string            `json:"failureMessage"` // The failure message for the failed request.
 	RequestID      network.RequestID `json:"requestId,omitempty"`
+}
+
+// SelectElementAccessibilityIssueReason [no description].
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Audits#type-SelectElementAccessibilityIssueReason
+type SelectElementAccessibilityIssueReason string
+
+// String returns the SelectElementAccessibilityIssueReason as string value.
+func (t SelectElementAccessibilityIssueReason) String() string {
+	return string(t)
+}
+
+// SelectElementAccessibilityIssueReason values.
+const (
+	SelectElementAccessibilityIssueReasonDisallowedSelectChild         SelectElementAccessibilityIssueReason = "DisallowedSelectChild"
+	SelectElementAccessibilityIssueReasonDisallowedOptGroupChild       SelectElementAccessibilityIssueReason = "DisallowedOptGroupChild"
+	SelectElementAccessibilityIssueReasonNonPhrasingContentOptionChild SelectElementAccessibilityIssueReason = "NonPhrasingContentOptionChild"
+	SelectElementAccessibilityIssueReasonInteractiveContentOptionChild SelectElementAccessibilityIssueReason = "InteractiveContentOptionChild"
+	SelectElementAccessibilityIssueReasonInteractiveContentLegendChild SelectElementAccessibilityIssueReason = "InteractiveContentLegendChild"
+)
+
+// MarshalEasyJSON satisfies easyjson.Marshaler.
+func (t SelectElementAccessibilityIssueReason) MarshalEasyJSON(out *jwriter.Writer) {
+	out.String(string(t))
+}
+
+// MarshalJSON satisfies json.Marshaler.
+func (t SelectElementAccessibilityIssueReason) MarshalJSON() ([]byte, error) {
+	return easyjson.Marshal(t)
+}
+
+// UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
+func (t *SelectElementAccessibilityIssueReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
+	v := in.String()
+	switch SelectElementAccessibilityIssueReason(v) {
+	case SelectElementAccessibilityIssueReasonDisallowedSelectChild:
+		*t = SelectElementAccessibilityIssueReasonDisallowedSelectChild
+	case SelectElementAccessibilityIssueReasonDisallowedOptGroupChild:
+		*t = SelectElementAccessibilityIssueReasonDisallowedOptGroupChild
+	case SelectElementAccessibilityIssueReasonNonPhrasingContentOptionChild:
+		*t = SelectElementAccessibilityIssueReasonNonPhrasingContentOptionChild
+	case SelectElementAccessibilityIssueReasonInteractiveContentOptionChild:
+		*t = SelectElementAccessibilityIssueReasonInteractiveContentOptionChild
+	case SelectElementAccessibilityIssueReasonInteractiveContentLegendChild:
+		*t = SelectElementAccessibilityIssueReasonInteractiveContentLegendChild
+
+	default:
+		in.AddError(fmt.Errorf("unknown SelectElementAccessibilityIssueReason value: %v", v))
+	}
+}
+
+// UnmarshalJSON satisfies json.Unmarshaler.
+func (t *SelectElementAccessibilityIssueReason) UnmarshalJSON(buf []byte) error {
+	return easyjson.Unmarshal(buf, t)
+}
+
+// SelectElementAccessibilityIssueDetails this issue warns about errors in
+// the select element content model.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Audits#type-SelectElementAccessibilityIssueDetails
+type SelectElementAccessibilityIssueDetails struct {
+	NodeID                                cdp.BackendNodeID                     `json:"nodeId"`
+	SelectElementAccessibilityIssueReason SelectElementAccessibilityIssueReason `json:"selectElementAccessibilityIssueReason"`
+	HasDisallowedAttributes               bool                                  `json:"hasDisallowedAttributes"`
 }
 
 // StyleSheetLoadingIssueReason [no description].
@@ -1616,6 +1745,7 @@ const (
 	InspectorIssueCodeFederatedAuthUserInfoRequestIssue InspectorIssueCode = "FederatedAuthUserInfoRequestIssue"
 	InspectorIssueCodePropertyRuleIssue                 InspectorIssueCode = "PropertyRuleIssue"
 	InspectorIssueCodeSharedDictionaryIssue             InspectorIssueCode = "SharedDictionaryIssue"
+	InspectorIssueCodeSelectElementAccessibilityIssue   InspectorIssueCode = "SelectElementAccessibilityIssue"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -1674,6 +1804,8 @@ func (t *InspectorIssueCode) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = InspectorIssueCodePropertyRuleIssue
 	case InspectorIssueCodeSharedDictionaryIssue:
 		*t = InspectorIssueCodeSharedDictionaryIssue
+	case InspectorIssueCodeSelectElementAccessibilityIssue:
+		*t = InspectorIssueCodeSelectElementAccessibilityIssue
 
 	default:
 		in.AddError(fmt.Errorf("unknown InspectorIssueCode value: %v", v))
@@ -1711,6 +1843,7 @@ type InspectorIssueDetails struct {
 	PropertyRuleIssueDetails                 *PropertyRuleIssueDetails                 `json:"propertyRuleIssueDetails,omitempty"`
 	FederatedAuthUserInfoRequestIssueDetails *FederatedAuthUserInfoRequestIssueDetails `json:"federatedAuthUserInfoRequestIssueDetails,omitempty"`
 	SharedDictionaryIssueDetails             *SharedDictionaryIssueDetails             `json:"sharedDictionaryIssueDetails,omitempty"`
+	SelectElementAccessibilityIssueDetails   *SelectElementAccessibilityIssueDetails   `json:"selectElementAccessibilityIssueDetails,omitempty"`
 }
 
 // IssueID a unique id for a DevTools inspector issue. Allows other entities
