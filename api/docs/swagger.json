@@ -1,14 +1,18 @@
 {
   "swagger": "2.0",
-  "info": {
-    "title": "Ecommerce Scraping Analytics API",
-    "description": "API for scraping data from the Etsy platform. This API provides endpoints to retrieve sold products and all product listings for a seller.",
-    "version": "1.0.0",
-    "contact": {
-      "name": "Developer",
-      "email": "azzam.sykir.work@gmail.com"
-    }
-  },
+    "info": {
+      "title": "Ecommerce Scraping Analytics API",
+      "description": "API for scraping data from the Etsy platform. This API provides endpoints to retrieve sold products and all product listings for a seller.",
+      "version": "1.0.0",
+      "contact": {
+        "name": "Developer",
+        "email": "azzam.sykir.work@gmail.com"
+      }
+    },
+  "externalDocs": {
+      "description": "GitHub Repository",
+      "url": "https://github.com/AzzamSyakir/eccommerce-scraping-analytics"
+    },
   "host": "localhost:8080",
   "basePath": "/",
   "schemes": ["http", "https"],
