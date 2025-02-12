@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 )
 
 type MainControllerConsumer struct {
@@ -86,7 +85,6 @@ func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbit
 				fmt.Printf("Failed to unmarshal category products: %v\n", err)
 				continue
 			}
-			fmt.Printf("akses di consumer main rabbitmq : %d ns\n", time.Now().UnixNano())
 			mainController.Controller.ResponseChannel <- response.Response[interface{}]{
 				Code:    200,
 				Message: "Success",

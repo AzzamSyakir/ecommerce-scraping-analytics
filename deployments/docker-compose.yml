@@ -15,33 +15,31 @@ services:
       test: rabbitmq-diagnostics check_port_connectivity
       interval: 5s
       retries: 20
-  app:
-    build:
-      context: ../
-      dockerfile: ./deployments/Dockerfile
-    container_name: app-container
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      RABBITMQ_HOST: rabbitmq
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    entrypoint:
-      [
-        "sh",
-        "-c",
-        "until wget -q --spider --user ${RABBITMQ_USER} --password ${RABBITMQ_PASS} http://rabbitmq:${RABBITMQ_MANAGEMENT_PORT}/api/aliveness-test/%2F; do echo 'Waiting for RabbitMQ...'; sleep 2; done; echo 'RabbitMQ is ready!'; ./main",
-      ]
+  # app:
+  #   build:
+  #     context: ../
+  #     dockerfile: ./deployments/Dockerfile
+  #   container_name: app-container
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     RABBITMQ_HOST: rabbitmq
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   entrypoint:
+  #     [
+  #       "sh",
+  #       "-c",
+  #       "until wget -q --spider --user ${RABBITMQ_USER} --password ${RABBITMQ_PASS} http://rabbitmq:${RABBITMQ_MANAGEMENT_PORT}/api/aliveness-test/%2F; do echo 'Waiting for RabbitMQ...'; sleep 2; done; echo 'RabbitMQ is ready!'; ./main",
+  #     ]
   swagger-ui:
     image: swaggerapi/swagger-ui:latest
     container_name: swagger-ui
     restart: unless-stopped
     ports:
       - ${SWAGGER_PORT}:8080
-    depends_on:
-      - app
     volumes:
       - ../api/docs/swagger.json:/spec/docs/swagger.json
     environment:

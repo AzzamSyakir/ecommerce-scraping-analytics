@@ -3,11 +3,9 @@ package controllers
 import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/rabbitmq/producer"
-	"fmt"
 	"net/http"
 
 	"ecommerce-scraping-analytics/internal/model/response"
-	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -73,7 +71,6 @@ func (mainController *MainController) GetSoldSellerProducts(writer http.Response
 	seller := vars["seller"]
 	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
-	fmt.Printf("data di terima di main controller : %d ns\n", time.Now().UnixNano())
 	var zeroResponse response.Response[map[string]interface{}]
 	if responseData.Code != zeroResponse.Code {
 		response.NewResponse(writer, &responseData)

@@ -718,11 +718,11 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller string) {
 	// timer and duration
 	startTime := time.Now()
-	fmt.Printf("akses di scraping controller: %d ns\n", startTime.UnixNano())
-	var categoriesDuration time.Duration
-	var productsDuration time.Duration
-	var productDetailsDuration time.Duration
-	var productDetailsDurationRetry time.Duration
+	fmt.Printf("akses di scraping controller : %d seconds, %d nanoseconds\n", startTime.Unix(), startTime.Nanosecond())
+	// var categoriesDuration time.Duration
+	// var productsDuration time.Duration
+	// var productDetailsDuration time.Duration
+	// var productDetailsDurationRetry time.Duration
 	extractProductID := func(url string) string {
 		re := regexp.MustCompile(`/p/([0-9]+)`)
 		matches := re.FindStringSubmatch(url)
@@ -805,7 +805,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	//Scrape Categories
 	var categoryURLs []string
 	go func() {
-		startTime := time.Now()
+		// startTime := time.Now()
 		var retryWg sync.WaitGroup
 		defer func() {
 			close(categoryCh)
@@ -848,7 +848,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			errCh <- err
 			return
 		}
-		categoriesDuration = time.Since(startTime)
+		// categoriesDuration = time.Since(startTime)
 		for _, url := range categoryURLs {
 			categoryCh <- url
 		}
@@ -894,7 +894,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	}()
 	//Scrape Products from Categories
 	go func() {
-		startTime := time.Now()
+		// startTime := time.Now()
 		var (
 			wg                     sync.WaitGroup
 			categoryProductResults []struct {
@@ -1014,12 +1014,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			}(categoryUrl)
 		}
 
-		productsDuration = time.Since(startTime)
+		// productsDuration = time.Since(startTime)
 	}()
 	// Scrape Product Details
 	go func() {
-		var startTimeProductDetails time.Time
-		var startTimeProductDetailsRetry time.Time
+		// var startTimeProductDetails time.Time
+		// var startTimeProductDetailsRetry time.Time
 		var (
 			wg                  sync.WaitGroup
 			retryWg             sync.WaitGroup
@@ -1032,7 +1032,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		for productCategory := range productCh {
 			wg.Add(1)
 			go func(productCategory entity.ProductWithCategory) {
-				startTimeProductDetails = time.Now()
+				// startTimeProductDetails = time.Now()
 				defer wg.Done()
 				productDetailCtx, cancel := chromedp.NewContext(browserCtx)
 				defer cancel()
@@ -1151,7 +1151,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		// Goroutine for retry productDetail
 		go func() {
 			for productUrl := range retryProductDetailCh {
-				startTimeProductDetailsRetry = time.Now()
+				// startTimeProductDetailsRetry = time.Now()
 				retryWg.Add(1)
 				go func(productCategory entity.ProductWithCategory) {
 					defer retryWg.Done()
@@ -1245,9 +1245,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		}()
 		// wait for goroutine
 		wg.Wait()
-		productDetailsDuration = time.Since(startTimeProductDetails)
+		// productDetailsDuration = time.Since(startTimeProductDetails)
 		retryWg.Wait()
-		productDetailsDurationRetry = time.Since(startTimeProductDetailsRetry)
+		// productDetailsDurationRetry = time.Since(startTimeProductDetailsRetry)
 		// close ctx, channel and pool
 		close(retryCategoryCh)
 		close(retryProductCh)
@@ -1305,12 +1305,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		totalDuration := time.Since(startTime)
 
 		// Print the total time taken
-		fmt.Println("Total time taken:", totalDuration)
-		fmt.Println("Total time for scraping categories:", categoriesDuration)
-		fmt.Println("Total time for scraping products list:", productsDuration)
-		fmt.Println("Total time for scraping product details:", productDetailsDuration)
-		fmt.Println("Total time for scraping product details retry :", productDetailsDurationRetry)
-		fmt.Printf("finished scraping at time : %d ns\n", time.Now().UnixNano())
+		fmt.Printf("total waktu untuk scraping : %f seconds, %d nanoseconds\n", totalDuration.Seconds(), totalDuration.Nanoseconds())
+		// fmt.Println("Total time for scraping categories:", categoriesDuration)
+		// fmt.Println("Total time for scraping products list:", productsDuration)
+		// fmt.Println("Total time for scraping product details:", productDetailsDuration)
+		// fmt.Println("Total time for scraping product details retry :", productDetailsDurationRetry)
+		fmt.Printf("selesai proses scraping  : %d seconds, %d nanoseconds\n", time.Now().Unix(), time.Now().Nanosecond())
 		message := "responseSuccess"
 		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
 	}()
