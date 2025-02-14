@@ -1061,7 +1061,6 @@ func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan s
 		errCh <- err
 		return
 	}
-	// categoriesDuration = time.Since(startTime)
 	for _, url := range categoryURLs {
 		fmt.Println("finished scraping categories")
 		categoryCh <- url
@@ -1069,7 +1068,6 @@ func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan s
 }
 func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan string, productCh chan entity.ProductWithCategory, errCh chan error, wg *sync.WaitGroup) {
 	defer func() {
-		close(productCh)
 		wg.Done()
 	}()
 	var (
@@ -1091,6 +1089,7 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer close(productCh)
 			categoryUrl := fmt.Sprintf("%s?&perpage=80", url)
 			var nextPageHref string
 			productCategoriesCtx, cancel := chromedp.NewContext(scrapingController.ScrapingProduct.BrowserCtx)
