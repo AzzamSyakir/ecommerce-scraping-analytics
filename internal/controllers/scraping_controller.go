@@ -1048,11 +1048,6 @@ func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan s
 			if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
 				return err
 			}
-
-			if pageTitle == "Service Temporarily Unavailable" {
-				retryCategoryCh <- sellerCategory
-				return nil
-			}
 			js := `
 			(() => {
 				const links = document.querySelectorAll('section.clearfix a[href]');
@@ -1118,11 +1113,6 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 					var pageTitle string
 					if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
 						return err
-					}
-
-					if pageTitle == "Service Temporarily Unavailable" {
-						retryProductCh <- categoryUrl
-						return nil
 					}
 
 					// Scrape product links from the current page
