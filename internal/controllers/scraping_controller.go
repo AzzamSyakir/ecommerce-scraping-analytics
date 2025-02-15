@@ -731,17 +731,19 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	newScrapingProduct := NewScrapingProduct(browserCtx, seller, headers)
 	scrapingcontroller.ScrapingProduct = newScrapingProduct
 	// goroutine handling error
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		for {
 			select {
-			case err := <-errCh:
+			case <-doneCh:
+				return
+			case err, ok := <-errCh:
+				if !ok {
+					return
+				}
+				fmt.Println("errCh : ", err)
 				messageError := "responseError"
 				messageCombine := messageError + ": " + err.Error()
 				scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-			case <-doneCh:
-				return
 			}
 		}
 	}()
@@ -879,8 +881,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				errCh <- err
 				return
 			}
+			<-doneCh
 		}
-
 		// retry productDetail
 		wg.Add(1)
 		go func() {
@@ -979,8 +981,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	// wait for all goroutine to finish
 	fmt.Println("tes before wg wait")
 	wg.Wait()
-	fmt.Println("tes sesudah wg wait")
 	close(errCh)
+	fmt.Println("tes sesudah wg wait")
 	cancelBrowser()
 	// Arrange data, sort, and save it to a slice
 	var totalItemsSold, totalProductsSold int
