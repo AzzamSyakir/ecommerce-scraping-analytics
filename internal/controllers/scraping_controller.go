@@ -714,7 +714,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
 			chromedp.Flag("no-sandbox", true),
-			// chromedp.Flag("headless", false),
+			chromedp.Flag("headless", false),
 		)...,
 	)
 	defer cancel()
@@ -723,7 +723,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	// Channel and wg definitions
 	categoryCh := make(chan string)
 	productCh := make(chan entity.ProductWithCategory)
-	doneCh := make(chan bool)
 	retryProductDetailCh := make(chan entity.ProductWithCategory)
 	errCh := make(chan error, 1)
 	var wg sync.WaitGroup
@@ -732,19 +731,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	scrapingcontroller.ScrapingProduct = newScrapingProduct
 	// goroutine handling error
 	go func() {
-		for {
-			select {
-			case <-doneCh:
-				return
-			case err, ok := <-errCh:
-				if !ok {
-					return
-				}
-				fmt.Println("errCh : ", err)
-				messageError := "responseError"
-				messageCombine := messageError + ": " + err.Error()
-				scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
-			}
+		for err := range errCh {
+			messageError := "responseError"
+			messageCombine := messageError + ": " + err.Error()
+			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
 		}
 	}()
 	//Scrape Categories
@@ -763,8 +753,8 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	wg.Add(1)
 	go func() {
 		defer func() {
+			fmt.Println("finished scraping product detail")
 			close(retryProductDetailCh)
-			fmt.Println("scrapeProductDetail finish")
 			wg.Done()
 		}()
 		// get link product from productCh and scrape page productDetail
@@ -779,14 +769,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					productUrl = "https://www.ecrater.com" + productUrl[pos+len(".ecrater.com"):]
 				}
 			}
-
 			var productDetailsResults struct {
 				Title     string `json:"title"`
 				Available string `json:"available"`
 				Sold      int    `json:"sold"`
 				Price     string `json:"price"`
 			}
-
 			err := chromedp.Run(productDetailCtx,
 				network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 				network.SetCacheDisabled(false),
@@ -873,7 +861,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 							ProductSold:  productDetailsResults.Sold,
 						}
 					}
-					fmt.Println("finished scraping product detail")
 					return nil
 				}),
 			)
@@ -881,7 +868,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				errCh <- err
 				return
 			}
-			<-doneCh
 		}
 		// retry productDetail
 		wg.Add(1)
@@ -939,6 +925,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 						if err != nil {
 							return err
 						}
+						fmt.Println("tes", productDetailsResults)
 						if productDetailsResults.Sold == 0 {
 							return nil
 						}
@@ -967,7 +954,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 								ProductSold:  productDetailsResults.Sold,
 							}
 						}
-
 						return nil
 					}),
 				)
@@ -979,14 +965,13 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		}()
 	}()
 	// wait for all goroutine to finish
-	fmt.Println("tes before wg wait")
+	fmt.Println("tes before wg wait, scrapeProductDetail ", categoryProductsMap)
 	wg.Wait()
 	close(errCh)
 	fmt.Println("tes sesudah wg wait")
 	cancelBrowser()
 	// Arrange data, sort, and save it to a slice
 	var totalItemsSold, totalProductsSold int
-
 	for categoryID, productMap := range categoryProductsMap {
 		uniqueProducts := make(map[string]entity.Product)
 
@@ -1039,73 +1024,73 @@ func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan s
 		close(categoryCh)
 		wg.Done()
 	}()
+	var wgCategory sync.WaitGroup
 	baseUrl := "http://%s.ecrater.com%s"
 	sellerCategory := fmt.Sprintf(baseUrl, scrapingController.ScrapingProduct.Seller, "/category.php")
-	err := chromedp.Run(scrapingController.ScrapingProduct.BrowserCtx,
-		network.SetCacheDisabled(false),
-		network.SetBlockedURLS(scrapingController.ScrapingProduct.BlockedUrls),
-		network.Enable(),
-		network.SetExtraHTTPHeaders(network.Headers(scrapingController.ScrapingProduct.Header)),
-		chromedp.Navigate(sellerCategory),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			checkService := `
-			(() => {
-				const h1Element = document.getElementsByTagName('h1')[0];
-				return h1Element ? h1Element.textContent.trim() : '';
-			})();
-		`
+	wgCategory.Add(1)
+	go func() {
+		defer wgCategory.Done()
+		err := chromedp.Run(scrapingController.ScrapingProduct.BrowserCtx,
+			network.SetCacheDisabled(false),
+			network.SetBlockedURLS(scrapingController.ScrapingProduct.BlockedUrls),
+			network.Enable(),
+			network.SetExtraHTTPHeaders(network.Headers(scrapingController.ScrapingProduct.Header)),
+			chromedp.Navigate(sellerCategory),
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				checkService := `
+				(() => {
+					const h1Element = document.getElementsByTagName('h1')[0];
+					return h1Element ? h1Element.textContent.trim() : '';
+				})();
+			`
 
-			var pageTitle string
-			if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
-				return err
-			}
-			js := `
-			(() => {
-				const links = document.querySelectorAll('section.clearfix a[href]');
-				return [...links].map(link => link.href);
-			})()
-		`
-			return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
-		}),
-	)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, url := range categoryURLs {
-		categoryCh <- url
-	}
+				var pageTitle string
+				if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
+					return err
+				}
+				js := `
+				(() => {
+					const links = document.querySelectorAll('section.clearfix a[href]');
+					return [...links].map(link => link.href);
+				})()
+			`
+				return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
+			}),
+		)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		for _, url := range categoryURLs {
+			categoryCh <- url
+		}
+	}()
+	wgCategory.Wait()
 }
 func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan string, productCh chan entity.ProductWithCategory, errCh chan error, wg *sync.WaitGroup) {
-	defer func() {
-		fmt.Println("finished scraping productList")
-		wg.Done()
-		close(productCh)
-	}()
 	var (
 		categoryProductResults []struct {
 			Href string `json:"href"`
 		}
+		productListWg sync.WaitGroup
 	)
-	ExtractProductId := func(url string) string {
-		re := regexp.MustCompile(`/p/([0-9]+)`)
-		matches := re.FindStringSubmatch(url)
-		if len(matches) > 1 {
-			return matches[1]
-		}
-		return ""
-	}
-
+	defer func() {
+		fmt.Println("finished scraping productList")
+		wg.Done()
+		productListWg.Wait()
+		close(productCh)
+	}()
 	// scrape list product from categories
 	for url := range categoryCh {
-		wg.Add(1)
-		var categoryUrl string
+		categoryUrl := fmt.Sprintf("%s?&perpage=80", url)
+		productListWg.Add(1)
 		go func() {
-			defer wg.Done()
-			categoryUrl = fmt.Sprintf("%s?&perpage=80", url)
-			var nextPageHref string
 			productCategoriesCtx, cancel := chromedp.NewContext(scrapingController.ScrapingProduct.BrowserCtx)
-			defer cancel()
+			defer func() {
+				productListWg.Done()
+				cancel()
+			}()
+			categoryUrl = fmt.Sprintf("%s?&perpage=80", url)
 			err := chromedp.Run(productCategoriesCtx,
 				network.SetCacheDisabled(false),
 				network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
@@ -1140,62 +1125,29 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 					if err := chromedp.Evaluate(jsScrapeProduct, &categoryProductResults).Do(ctx); err != nil {
 						return err
 					}
-					// Check if the next page button exists and extract its href
-					jsCheckNextPage := `
-								(() => {
-										const nextPageBtn = document.querySelector('#page-header-controls > ul > li > a');
-										return nextPageBtn ? nextPageBtn.href : "";
-								})();
-						`
-					if err := chromedp.Evaluate(jsCheckNextPage, &nextPageHref).Do(ctx); err != nil {
-						return err
-					}
-
-					// If a next page is available, navigate to it and repeat scraping
-					if nextPageHref != "" {
-						nextPageHref = fmt.Sprintf("%s&perpage=80", nextPageHref)
-						err := chromedp.Navigate(nextPageHref).Do(ctx)
-						if err != nil {
-							return err
-						}
-
-						// Wait for the product list grid to be visible
-						if err := chromedp.WaitVisible("#product-list-grid", chromedp.ByID).Do(ctx); err != nil {
-							return err
-						}
-
-						// Recursively scrape the next page
-						return chromedp.ActionFunc(func(ctx context.Context) error {
-							if err := chromedp.Evaluate(jsScrapeProduct, &categoryProductResults).Do(ctx); err != nil {
-								return err
-							}
-							return nil
-						}).Do(ctx)
-					}
-
 					return nil
 				}))
 			if err != nil {
 				errCh <- err
 				return
 			}
+			duplicate := make(map[string]bool)
+			for _, productResult := range categoryProductResults {
+				if duplicate[productResult.Href] {
+					continue
+				}
+				duplicate[productResult.Href] = true
+
+				productCh <- entity.ProductWithCategory{
+					CategoryURL: categoryUrl,
+					Product: entity.Product{
+						ProductID:  ExtractProductId(productResult.Href),
+						ProductURL: productResult.Href,
+					},
+				}
+			}
+			fmt.Println("tes")
 		}()
-		duplicate := make(map[string]bool)
-
-		for _, productResult := range categoryProductResults {
-			if duplicate[productResult.Href] {
-				continue
-			}
-			duplicate[productResult.Href] = true
-
-			productCh <- entity.ProductWithCategory{
-				CategoryURL: categoryUrl,
-				Product: entity.Product{
-					ProductID:  ExtractProductId(productResult.Href),
-					ProductURL: productResult.Href,
-				},
-			}
-		}
 	}
 }
 
