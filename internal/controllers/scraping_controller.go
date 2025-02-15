@@ -750,23 +750,19 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 		categoryProductsMap = make(map[string]map[string]entity.Product)
 		categoryNamesMap    = make(map[string]string)
 	)
-	fmt.Println("wg add line 753")
 	wg.Add(1)
 	go func() {
 		defer func() {
 			fmt.Println("finished scraping product detail")
-			fmt.Println("wg done line 759")
 			wg.Done()
 		}()
 
 		for prod := range productCh {
-			fmt.Println("wg add line 763")
 			wg.Add(1)
 			go func(prod entity.ProductWithCategory) {
 				productDetailCtx, cancel := chromedp.NewContext(browserCtx)
 				defer func() {
 					cancel()
-					fmt.Println("wg done line 769")
 					wg.Done()
 				}()
 
@@ -872,7 +868,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					defer func() {
 						cancel()
 						wg.Done()
-						close(retryProductDetailCh)
 					}()
 					var productDetailsResults struct {
 						Title     string `json:"title"`
@@ -945,9 +940,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	}()
 
 	// wait for all goroutine to finish
+	fmt.Println("tes before wg wait")
 	wg.Wait()
 	close(errCh)
+	close(retryProductDetailCh)
 	cancelBrowser()
+	fmt.Println("tes sesudah wg wait")
 	// Arrange data, sort, and save it to a slice
 	var totalItemsSold, totalProductsSold int
 	for categoryID, productMap := range categoryProductsMap {
