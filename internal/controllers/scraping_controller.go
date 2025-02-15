@@ -731,7 +731,9 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	newScrapingProduct := NewScrapingProduct(browserCtx, seller, headers)
 	scrapingcontroller.ScrapingProduct = newScrapingProduct
 	// goroutine handling error
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case err := <-errCh:
@@ -759,6 +761,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	wg.Add(1)
 	go func() {
 		defer func() {
+			close(retryProductDetailCh)
 			fmt.Println("scrapeProductDetail finish")
 			wg.Done()
 		}()
@@ -877,11 +880,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				return
 			}
 		}
+
 		// retry productDetail
 		wg.Add(1)
 		go func() {
 			defer func() {
-				close(retryProductDetailCh)
 				wg.Done()
 				fmt.Println("retryProductDetail finished")
 			}()
