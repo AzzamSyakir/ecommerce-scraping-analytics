@@ -722,30 +722,32 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	// Channel and wg definitions
 	categoryCh := make(chan string)
 	productCh := make(chan entity.ProductWithCategory)
-	done := make(chan bool)
+	doneCh := make(chan bool)
 	retryProductDetailCh := make(chan entity.ProductWithCategory)
 	errCh := make(chan error, 1)
-	var wg sync.WaitGroup
+	var wg *sync.WaitGroup
 	// create and setup instance scrapingProduct
 	newScrapingProduct := NewScrapingProduct(browserCtx, seller, headers)
 	scrapingcontroller.ScrapingProduct = newScrapingProduct
 	// goroutine handling error
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		for err := range errCh {
-			messageError := "responseError"
-			messageCombine := messageError + ": " + err.Error()
-			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+		for {
+			select {
+			case err := <-errCh:
+				messageError := "responseError"
+				messageCombine := messageError + ": " + err.Error()
+				scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
+			case <-doneCh:
+				return
+			}
 		}
-		fmt.Println("goroutine handling error aman")
 	}()
 	//Scrape Categories
 	wg.Add(1)
-	go scrapingcontroller.ScrapeCategories(categoryCh, errCh, &wg)
+	go scrapingcontroller.ScrapeCategories(categoryCh, errCh, wg)
 	//Scrape ListProducts from Categories
 	wg.Add(1)
-	go scrapingcontroller.ScrapeListProducts(categoryCh, productCh, errCh, &wg)
+	go scrapingcontroller.ScrapeListProducts(categoryCh, productCh, errCh, wg)
 	// Scrape Product Details
 	var (
 		mu                  sync.Mutex
@@ -755,9 +757,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	)
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer func() {
+			fmt.Println("scrapeProductDetail finish")
+			wg.Done()
+		}()
 		// get link product from productCh and scrape page productDetail
-		fmt.Println("before looping product ch")
 		for productList := range productCh {
 			productDetailCtx, cancel := chromedp.NewContext(browserCtx)
 			defer cancel()
@@ -872,11 +876,14 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 				return
 			}
 		}
-		fmt.Println("after looping product ch")
 		// retry productDetail
 		wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer func() {
+				close(retryProductDetailCh)
+				wg.Done()
+				fmt.Println("retryProductDetail finished")
+			}()
 			for retryProductDetail := range retryProductDetailCh {
 				var productDetailsResults struct {
 					Title     string `json:"title"`
@@ -963,14 +970,12 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 					return
 				}
 			}
-			fmt.Println("after looping retryProductDetail")
 		}()
 	}()
 	// wait for all goroutine to finish
-	fmt.Println("tes sebelum wg wait")
+	fmt.Println("tes before wg wait")
 	wg.Wait()
-	fmt.Println("tes sesudah wg wait ")
-	close(retryProductDetailCh)
+	fmt.Println("tes sesudah wg wait")
 	close(errCh)
 	cancelBrowser()
 	// Arrange data, sort, and save it to a slice
@@ -1020,11 +1025,11 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	}
 	message := "responseSuccess"
 	scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
-	<-done
 }
 func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan string, errCh chan error, wg *sync.WaitGroup) {
 	var categoryURLs []string
 	defer func() {
+		fmt.Println("finished scraping categories")
 		close(categoryCh)
 		wg.Done()
 	}()
@@ -1062,13 +1067,14 @@ func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan s
 		return
 	}
 	for _, url := range categoryURLs {
-		fmt.Println("finished scraping categories")
 		categoryCh <- url
 	}
 }
 func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan string, productCh chan entity.ProductWithCategory, errCh chan error, wg *sync.WaitGroup) {
 	defer func() {
+		fmt.Println("finished scraping productList")
 		wg.Done()
+		close(productCh)
 	}()
 	var (
 		categoryProductResults []struct {
@@ -1087,10 +1093,10 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 	// scrape list product from categories
 	for url := range categoryCh {
 		wg.Add(1)
+		var categoryUrl string
 		go func() {
 			defer wg.Done()
-			defer close(productCh)
-			categoryUrl := fmt.Sprintf("%s?&perpage=80", url)
+			categoryUrl = fmt.Sprintf("%s?&perpage=80", url)
 			var nextPageHref string
 			productCategoriesCtx, cancel := chromedp.NewContext(scrapingController.ScrapingProduct.BrowserCtx)
 			defer cancel()
@@ -1167,23 +1173,23 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 				errCh <- err
 				return
 			}
-			duplicate := make(map[string]bool)
-
-			for _, productResult := range categoryProductResults {
-				if duplicate[productResult.Href] {
-					continue
-				}
-				duplicate[productResult.Href] = true
-
-				productCh <- entity.ProductWithCategory{
-					CategoryURL: categoryUrl,
-					Product: entity.Product{
-						ProductID:  ExtractProductId(productResult.Href),
-						ProductURL: productResult.Href,
-					},
-				}
-			}
 		}()
+		duplicate := make(map[string]bool)
+
+		for _, productResult := range categoryProductResults {
+			if duplicate[productResult.Href] {
+				continue
+			}
+			duplicate[productResult.Href] = true
+
+			productCh <- entity.ProductWithCategory{
+				CategoryURL: categoryUrl,
+				Product: entity.Product{
+					ProductID:  ExtractProductId(productResult.Href),
+					ProductURL: productResult.Href,
+				},
+			}
+		}
 	}
 }
 
