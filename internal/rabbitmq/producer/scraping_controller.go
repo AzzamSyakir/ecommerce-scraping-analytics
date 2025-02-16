@@ -4,7 +4,6 @@ import (
 	"ecommerce-scraping-analytics/internal/model/response"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/streadway/amqp"
 )
@@ -17,7 +16,6 @@ func CreateNewScrapingControllerProducer() *ScrapingControllerProducer {
 }
 
 func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbitMQ *amqp.Channel, data *response.SellerProductResponse) error {
-	fmt.Printf("akses untuk publish message : %d ns\n", time.Now().UnixNano())
 	queueName := "ProductSellerResponseQueue"
 	payload := map[string]interface{}{
 		"message": msg,
@@ -41,6 +39,5 @@ func (*ScrapingControllerProducer) PublishScrapingData(msg string, channelRabbit
 	); err != nil {
 		return fmt.Errorf("failed to publish message to queue: %w", err)
 	}
-	fmt.Printf("finished publishing message data : %d ns\n", time.Now().UnixNano())
 	return nil
 }

@@ -4,9 +4,7 @@ import (
 	"ecommerce-scraping-analytics/internal/config"
 	"ecommerce-scraping-analytics/internal/controllers"
 	"encoding/json"
-	"fmt"
 	"log"
-	"time"
 )
 
 type ScrapingControllerConsumer struct {
@@ -73,7 +71,6 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageSold
 	for msg := range msgs {
 		messageBody := func() map[string]string { m := make(map[string]string); json.Unmarshal([]byte(msg.Body), &m); return m }()
 		if messageBody["message"] == expectedMessage {
-			fmt.Printf("akses di consumer scraping rabbitmq : %d ns\n", time.Now().UnixNano())
 			scrapingControllerConsumer.Controller.ScrapeSoldSellerProducts(messageBody["seller"])
 		} else {
 			log.Printf("Message '%s' does not match expected message '%s'. Ignoring...", messageBody, expectedMessage)
