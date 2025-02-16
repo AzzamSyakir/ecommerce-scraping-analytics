@@ -753,7 +753,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	wg.Add(1)
 	go func() {
 		defer func() {
-			fmt.Println("finished scraping product detail")
 			wg.Done()
 		}()
 
@@ -940,12 +939,10 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 	}()
 
 	// wait for all goroutine to finish
-	fmt.Println("tes before wg wait")
 	wg.Wait()
 	close(errCh)
 	close(retryProductDetailCh)
 	cancelBrowser()
-	fmt.Println("tes sesudah wg wait")
 	// Arrange data, sort, and save it to a slice
 	var totalItemsSold, totalProductsSold int
 	for categoryID, productMap := range categoryProductsMap {
@@ -996,7 +993,6 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 func (scrapingController *ScrapingController) ScrapeCategories(categoryCh chan string, errCh chan error, wg *sync.WaitGroup) {
 	var categoryURLs []string
 	defer func() {
-		fmt.Println("finished scraping categories")
 		close(categoryCh)
 		wg.Done()
 	}()
@@ -1060,7 +1056,6 @@ func (scrapingController *ScrapingController) ScrapeListProducts(categoryCh chan
 			}
 			productCategoriesCtx, cancel := chromedp.NewContext(scrapingController.ScrapingProduct.BrowserCtx)
 			defer func() {
-				fmt.Println("finished scraping productList")
 				productListWg.Done()
 				cancel()
 			}()
