@@ -714,7 +714,7 @@ func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller st
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
 			chromedp.Flag("no-sandbox", true),
-			chromedp.Flag("headless", false),
+			// chromedp.Flag("headless", false),
 		)...,
 	)
 	defer cancel()
