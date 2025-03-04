@@ -1,0 +1,57 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Create .env file
+        run: |
+            cat <<EOF > .env
+            GIN_MODE=${{ secrets.GIN_MODE }}
+            GATEWAY_APP_HOST=${{ secrets.GATEWAY_APP_HOST }}
+            GATEWAY_APP_PORT=${{ secrets.GATEWAY_APP_PORT }}
+            POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
+            POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            POSTGRES_NEED=${{ secrets.POSTGRES_NEED }}
+            SWAGGER_PORT=${{ secrets.SWAGGER_PORT }}
+            RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}
+            RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}
+            RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}
+            RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }}
+            RABBITMQ_MANAGEMENT_PORT=${{ secrets.RABBITMQ_MANAGEMENT_PORT }}
+            RABBITMQ_QUEUE_NAMES=${{ secrets.RABBITMQ_QUEUE_NAMES }}
+            EOF
+      - name: Login to DockerHub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+
+      - name: Pull Docker Image
+        run: |
+              docker pull bukanasa/ecommerce-scraping-analytics:latest
+            
+      - name: Stop and Remove Old Containers
+        run: |
+          docker compose --env-file ./.env -f ~/program/go-micro-services/docker/docker-compose.yml down --remove-orphans || true
+      
+      - name: Remove Old Docker Image
+        run: |
+          docker images --filter "reference=bukanasa/ecommerce-scraping-analytics" --format "{{.ID}}" | xargs -r docker rmi -f || true
+          
+      - name: Run Docker
+        run: |
+          mv .env ~/program/ecommerce-scraping-analytics
+          cd 
+          cd program/ecommerce-scraping-analytics
+          docker compose --env-file .env -f docker/docker-compose.yml up -d
