@@ -14,7 +14,7 @@ func main() {
 	// http server
 	address := fmt.Sprintf(
 		"%s:%s",
-		"0.0.0.0",
+		container.Env.App.AppHost,
 		container.Env.App.AppPort,
 	)
 	listenAndServeErr := http.ListenAndServe(address, container.Middleware.Cors.Handler(container.Route.Router))

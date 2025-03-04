@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/streadway/amqp"
 )
@@ -16,7 +14,7 @@ type RabbitMqConfig struct {
 }
 
 func NewRabbitMqConfig(env *EnvConfig) *RabbitMqConfig {
-	connection, err := RabbitMQConnection()
+	connection, err := RabbitMQConnection(env)
 	if err != nil {
 		panic("failed to establish RabbitMQ connection: " + err.Error())
 	}
@@ -24,7 +22,7 @@ func NewRabbitMqConfig(env *EnvConfig) *RabbitMqConfig {
 	if err != nil {
 		panic("failed to establish RabbitMQ channel: " + err.Error())
 	}
-	queue, err := RabbitMqQueue(channel)
+	queue, err := RabbitMqQueue(channel, env)
 	if err != nil {
 		panic("failed to establish RabbitMQ queue: " + err.Error())
 	}
@@ -37,11 +35,11 @@ func NewRabbitMqConfig(env *EnvConfig) *RabbitMqConfig {
 	return rabbitMqConfig
 }
 
-func RabbitMQConnection() (*amqp.Connection, error) {
-	rabbitMqHost := os.Getenv("RABBITMQ_HOST")
-	rabbitMqUser := os.Getenv("RABBITMQ_USER")
-	rabbitMqPass := os.Getenv("RABBITMQ_PASS")
-	rabbitMqPort := os.Getenv("RABBITMQ_PORT")
+func RabbitMQConnection(env *EnvConfig) (*amqp.Connection, error) {
+	rabbitMqHost := env.RabbitMq.Host
+	rabbitMqUser := env.RabbitMq.User
+	rabbitMqPass := env.RabbitMq.Password
+	rabbitMqPort := env.RabbitMq.Port
 	amqpServerURL := fmt.Sprintf("amqp://%s:%s@%s:%s", rabbitMqUser, rabbitMqPass, rabbitMqHost, rabbitMqPort)
 	connectRabbitMQ, err := amqp.Dial(amqpServerURL)
 	if err != nil {
@@ -59,11 +57,9 @@ func RabbitMqChannel(connection *amqp.Connection) (*amqp.Channel, error) {
 	return channelRabbitMQ, nil
 }
 
-func RabbitMqQueue(channel *amqp.Channel) ([]*amqp.Queue, error) {
+func RabbitMqQueue(channel *amqp.Channel, env *EnvConfig) ([]*amqp.Queue, error) {
 	var declaredQueues []*amqp.Queue
-	queueNamesStr := os.Getenv("RABBITMQ_QUEUE_NAMES")
-	queueNames := strings.Split(queueNamesStr, ",")
-	for _, name := range queueNames {
+	for _, name := range env.RabbitMq.Queues {
 		rabbitmqQueue, err := channel.QueueDeclare(
 			name,
 			true,  // Durable
