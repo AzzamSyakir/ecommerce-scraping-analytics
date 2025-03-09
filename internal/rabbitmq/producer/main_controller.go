@@ -1,22 +1,27 @@
 package producer
 
 import (
+	"ecommerce-scraping-analytics/internal/config"
 	"encoding/json"
 	"fmt"
 
 	"github.com/streadway/amqp"
 )
 
-type MainControllerProducer struct{}
+type MainControllerProducer struct {
+	Env *config.EnvConfig
+}
 
-func CreateNewMainControllerProducer() *MainControllerProducer {
-	mainControllerProducer := &MainControllerProducer{}
+func CreateNewMainControllerProducer(envConfig *config.EnvConfig) *MainControllerProducer {
+	mainControllerProducer := &MainControllerProducer{
+		Env: envConfig,
+	}
 	return mainControllerProducer
 }
 
-func (*MainControllerProducer) CreateMessageGetAllSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
-	queueName := "GetAllSellerProduct Queue"
-	payload := map[string]interface{}{
+func (mainControllerProducer *MainControllerProducer) CreateMessageGetAllSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
+	queueName := mainControllerProducer.Env.RabbitMq.Queues[1]
+	payload := map[string]any{
 		"message": "Start Scraping",
 		"seller":  seller,
 		"channel": channelRabbitMQ,
@@ -41,9 +46,9 @@ func (*MainControllerProducer) CreateMessageGetAllSellerProducts(channelRabbitMQ
 	return nil
 }
 
-func (*MainControllerProducer) CreateMessageGetSoldSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
-	queueName := "GetSoldSellerProductQueue"
-	payload := map[string]interface{}{
+func (mainControllerProducer *MainControllerProducer) CreateMessageGetSoldSellerProducts(channelRabbitMQ *amqp.Channel, seller string) error {
+	queueName := mainControllerProducer.Env.RabbitMq.Queues[2]
+	payload := map[string]any{
 		"message": "Start Scraping",
 		"seller":  seller,
 		"channel": channelRabbitMQ,
