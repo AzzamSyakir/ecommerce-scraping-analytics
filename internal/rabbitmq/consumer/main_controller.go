@@ -11,6 +11,7 @@ import (
 )
 
 type MainControllerConsumer struct {
+	Env        *config.EnvConfig
 	Controller *controllers.MainController
 }
 type RabbitMQPayload struct {
@@ -19,7 +20,7 @@ type RabbitMQPayload struct {
 }
 
 func (mainController MainControllerConsumer) ConsumeSellerProductResponse(rabbitMQConfig *config.RabbitMqConfig) {
-	expectedQueueName := "ProductSellerResponseQueue"
+	expectedQueueName := mainController.Env.RabbitMq.Queues[0]
 	var queueName string
 	for _, name := range rabbitMQConfig.Queue {
 		if expectedQueueName == name.Name {

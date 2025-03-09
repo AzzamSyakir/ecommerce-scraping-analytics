@@ -12,11 +12,11 @@ type ConsumerEntrypoint struct {
 	RabbitMQ         *config.RabbitMqConfig
 }
 
-func NewConsumerEntrypointInit(rabbitMQConfig *config.RabbitMqConfig, mainController *controllers.MainController, scrapingController *controllers.ScrapingController) *ConsumerEntrypoint {
+func NewConsumerEntrypointInit(rabbitMQConfig *config.RabbitMqConfig, mainController *controllers.MainController, scrapingController *controllers.ScrapingController, envConfig *config.EnvConfig) *ConsumerEntrypoint {
 	return &ConsumerEntrypoint{
-		MainConsumer: &MainControllerConsumer{Controller: mainController},
+		MainConsumer: &MainControllerConsumer{Controller: mainController, Env: envConfig},
 		// LogicConsumer:    &LogicControllerConsumer{Controller: &logic.LogicController{}},
-		ScrapingConsumer: &ScrapingControllerConsumer{Controller: scrapingController},
+		ScrapingConsumer: &ScrapingControllerConsumer{Controller: scrapingController, Env: envConfig},
 		RabbitMQ:         rabbitMQConfig,
 	}
 }

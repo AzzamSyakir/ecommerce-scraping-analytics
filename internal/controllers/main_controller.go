@@ -27,37 +27,15 @@ func NewMainController(logic *LogicController, rabbitMq *config.RabbitMqConfig, 
 }
 
 func (mainController *MainController) GetAllSellerProducts(writer http.ResponseWriter, reader *http.Request) {
-	seller := reader.URL.Query().Get("seller")
-	rabbitMQConnection := mainController.Rabbitmq.Connection
-	rabbitMqChannel, err := rabbitMQConnection.Channel()
-	if err != nil {
-		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte(err.Error()))
-		return
-	}
-	defer rabbitMqChannel.Close()
-
-	_, err = rabbitMqChannel.QueueDeclare(
-		"GetAllSellerProduct Queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte(err.Error()))
-		return
-	}
-
-	mainController.Producer.CreateMessageGetAllSellerProducts(rabbitMqChannel, seller)
+	vars := mux.Vars(reader)
+	seller := vars["seller"]
+	mainController.Producer.CreateMessageGetAllSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
-	var zeroResponse response.Response[map[string]interface{}]
+	var zeroResponse response.Response[map[string]any]
 	if responseData.Code != zeroResponse.Code {
 		response.NewResponse(writer, &responseData)
 	} else {
-		result := &response.Response[map[string]interface{}]{
+		result := &response.Response[map[string]any]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}
@@ -71,11 +49,11 @@ func (mainController *MainController) GetSoldSellerProducts(writer http.Response
 	seller := vars["seller"]
 	mainController.Producer.CreateMessageGetSoldSellerProducts(mainController.Rabbitmq.Channel, seller)
 	responseData := <-mainController.ResponseChannel
-	var zeroResponse response.Response[map[string]interface{}]
+	var zeroResponse response.Response[map[string]any]
 	if responseData.Code != zeroResponse.Code {
 		response.NewResponse(writer, &responseData)
 	} else {
-		result := &response.Response[map[string]interface{}]{
+		result := &response.Response[map[string]any]{
 			Code:    http.StatusBadRequest,
 			Message: "Failed to retrieve products, cannot get response from message rabbitMq",
 		}

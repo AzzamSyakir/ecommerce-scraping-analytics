@@ -46,6 +46,7 @@ func NewScrapingProduct(browserCtx context.Context, seller string, headers map[s
 }
 
 func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller string) {
+	fmt.Println("scrapeAllProduct start")
 	// Headers for scraping request
 	headers := map[string]interface{}{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -56,7 +57,6 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 		"Upgrade-Insecure-Requests": "1",
 		"User-Agent":                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.69 Safari/537.36",
 	}
-
 	// Initialize Chromedp context
 	ctx, cancel := chromedp.NewExecAllocator(
 		context.Background(),
@@ -64,7 +64,6 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 			chromedp.DisableGPU,
 			chromedp.NoSandbox,
 			chromedp.Flag("disable-plugins", true),
-			chromedp.Flag("disable-background-timer-throttling", true),
 			chromedp.Flag("disable-extensions", true),
 			chromedp.Flag("blink-settings", "imagesEnabled=false"),
 			chromedp.Flag("disable-features", "NetworkService,OutOfBlinkCors"),
@@ -72,27 +71,19 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 			// chromedp.Flag("headless", false),
 		)...,
 	)
-
 	defer cancel()
-
 	// Create a browser context from the allocator
 	browserCtx, cancelBrowser := chromedp.NewContext(ctx)
-	defer cancelBrowser()
-	// Channel and pool definitions
-	maxWorker := 20
+	// Channel and wg definitions
 	categoryCh := make(chan string)
 	productCh := make(chan entity.ProductWithCategory)
-	done := make(chan bool)
-	categoryPool := make(chan struct{}, maxWorker)
-	productListpool := make(chan struct{}, maxWorker)
-	productDetailPool := make(chan struct{}, maxWorker)
-	retryCategoryCh := make(chan string, maxWorker)
-	retryProductCh := make(chan string, maxWorker)
-	retryProductDetailCh := make(chan entity.ProductWithCategory, maxWorker)
-	retryPool := make(chan struct{}, maxWorker)
+	retryProductDetailCh := make(chan entity.ProductWithCategory)
 	errCh := make(chan error, 1)
-
-	// handling error
+	var wg sync.WaitGroup
+	// create and setup instance scrapingProduct
+	newScrapingProduct := NewScrapingProduct(browserCtx, seller, headers)
+	scrapingcontroller.ScrapingProduct = newScrapingProduct
+	// goroutine handling error
 	go func() {
 		for err := range errCh {
 			messageError := "responseError"
@@ -100,342 +91,36 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 			scrapingcontroller.Producer.PublishScrapingData(messageCombine, scrapingcontroller.Rabbitmq.Channel, nil)
 		}
 	}()
-
 	//Scrape Categories
-	var categoryURLs []string
-	go func() {
-		var retryWg sync.WaitGroup
-		defer func() {
-			close(categoryCh)
-			close(categoryPool)
-		}()
-		categoryPool <- struct{}{}
-		defer func() { <-categoryPool }()
-		baseUrl := "http://%s.ecrater.com%s"
-		sellerCategory := fmt.Sprintf(baseUrl, seller, "/category.php")
-		err := chromedp.Run(browserCtx,
-			network.SetCacheDisabled(false),
-			network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-			network.Enable(),
-			network.SetExtraHTTPHeaders(network.Headers(headers)),
-			chromedp.Navigate(sellerCategory),
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				checkService := `
-				(() => {
-					const h1Element = document.getElementsByTagName('h1')[0];
-					return h1Element ? h1Element.textContent.trim() : '';
-				})();
-			`
-
-				var pageTitle string
-				if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
-					return err
-				}
-
-				if pageTitle == "Service Temporarily Unavailable" {
-					retryCategoryCh <- sellerCategory
-					return nil
-				}
-				js := `
-				(() => {
-					const links = document.querySelectorAll('section.clearfix a[href]');
-					return [...links].map(link => link.href);
-				})()
-			`
-				return chromedp.Evaluate(js, &categoryURLs).Do(ctx)
-			}),
-		)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		for _, url := range categoryURLs {
-			categoryCh <- url
-		}
-		// Goroutine for retry categories Error
-		go func() {
-			for productUrl := range retryProductCh {
-				retryWg.Add(1)
-				go func(url string) {
-					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
-					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
-					defer cancel()
-					err := chromedp.Run(retryErrProductCtx,
-						network.SetCacheDisabled(false),
-						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-						network.Enable(),
-						network.SetExtraHTTPHeaders(network.Headers(headers)),
-						chromedp.Navigate(url),
-						chromedp.ActionFunc(func(ctx context.Context) error {
-							js := `
-							(() => {
-								const links = document.querySelectorAll('section.clearfix a[href]');
-								return [...links].map(link => link.href);
-							})()
-						`
-							err := chromedp.Evaluate(js, &categoryURLs).Do(ctx)
-							if err != nil {
-								return err
-							}
-							for _, url := range categoryURLs {
-								categoryCh <- url
-							}
-							return nil
-						}),
-					)
-					if err != nil {
-						errCh <- err
-						return
-					}
-				}(productUrl)
-			}
-		}()
-		retryWg.Wait()
-	}()
-	//Scrape Products from Categories
-	go func() {
-		var (
-			wg                     sync.WaitGroup
-			retryWg                sync.WaitGroup
-			categoryProductResults []struct {
-				Href string `json:"href"`
-			}
-		)
-		defer func() {
-			wg.Wait()
-			close(productCh)
-			close(productListpool)
-		}()
-		// goroutine scrape product from categories
-		for url := range categoryCh {
-			categoryUrl := fmt.Sprintf("%s?&perpage=80", url)
-			wg.Add(1)
-			go func(url string) {
-				defer wg.Done()
-				productListpool <- struct{}{}
-				defer func() { <-productListpool }()
-
-				var nextPageHref string
-				var currentPageResults []struct {
-					Href string `json:"href"`
-				}
-				productCategoriesCtx, cancel := chromedp.NewContext(browserCtx)
-				defer cancel()
-
-				err := chromedp.Run(productCategoriesCtx,
-					network.SetCacheDisabled(false),
-					network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-					network.Enable(),
-					network.SetExtraHTTPHeaders(network.Headers(headers)),
-					chromedp.Navigate(url),
-					chromedp.WaitReady("body"),
-					chromedp.ActionFunc(func(ctx context.Context) error {
-						// Check if the page is temporarily unavailable
-						checkService := `
-								(() => {
-										const h1Element = document.getElementsByTagName('h1')[0];
-										return h1Element ? h1Element.textContent.trim() : '';
-								})();
-						`
-						var pageTitle string
-						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
-							return err
-						}
-
-						if pageTitle == "Service Temporarily Unavailable" {
-							retryProductCh <- url
-							return nil
-						}
-
-						// Scrape product links from the current page
-						jsScrapeProduct := `
-								(() => {
-										return [...document.querySelectorAll('#product-list-grid > li')]
-												.map(li => {
-														const link = li.querySelector('div.product-details > h2 > a');
-														return link ? { href: link.href, text: link.textContent.trim() } : '';
-												})
-												.filter(item => item !== '');
-								})();
-						`
-						if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-							return err
-						}
-						categoryProductResults = append(categoryProductResults, currentPageResults...)
-						// Check if the next page button exists and extract its href
-						jsCheckNextPage := `
-								(() => {
-										const nextPageBtn = document.querySelector('#page-header-controls > ul > li > a');
-										return nextPageBtn ? nextPageBtn.href : "";
-								})();
-						`
-						if err := chromedp.Evaluate(jsCheckNextPage, &nextPageHref).Do(ctx); err != nil {
-							return err
-						}
-
-						// If a next page is available, navigate to it and repeat scraping
-						if nextPageHref != "" {
-							nextPageHref = fmt.Sprintf("%s&perpage=80", nextPageHref)
-							err := chromedp.Navigate(nextPageHref).Do(ctx)
-							if err != nil {
-								return err
-							}
-
-							// Wait for the product list grid to be visible
-							if err := chromedp.WaitVisible("#product-list-grid", chromedp.ByID).Do(ctx); err != nil {
-								return err
-							}
-
-							// Recursively scrape the next page
-							return chromedp.ActionFunc(func(ctx context.Context) error {
-								if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-									return err
-								}
-								categoryProductResults = append(categoryProductResults, currentPageResults...)
-								return nil
-							}).Do(ctx)
-						}
-
-						return nil
-					}),
-				)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				for _, productResult := range categoryProductResults {
-
-					productCh <- entity.ProductWithCategory{
-						CategoryURL: url,
-						Product: entity.Product{
-							ProductID:  ExtractProductId(productResult.Href),
-							ProductURL: productResult.Href,
-						},
-					}
-				}
-
-			}(categoryUrl)
-		}
-
-		// Goroutine for retry scrape product from categories
-		go func() {
-			for productUrl := range retryProductCh {
-				retryWg.Add(1)
-				go func(url string) {
-					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
-					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
-					defer cancel()
-					var nextPageHref string
-					var currentPageResults []struct {
-						Href string `json:"href"`
-					}
-					err := chromedp.Run(retryErrProductCtx,
-						network.SetCacheDisabled(false),
-						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
-						network.Enable(),
-						network.SetExtraHTTPHeaders(network.Headers(headers)),
-						chromedp.Navigate(url),
-						chromedp.ActionFunc(func(ctx context.Context) error {
-							// Scrape product links from the current page
-							jsScrapeProduct := `
-									(() => {
-											return [...document.querySelectorAll('#product-list-grid > li')]
-													.map(li => {
-															const link = li.querySelector('div.product-details > h2 > a');
-															return link ? { href: link.href, text: link.textContent.trim() } : '';
-													})
-													.filter(item => item !== '');
-									})();
-							`
-							if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-								return err
-							}
-							categoryProductResults = append(categoryProductResults, currentPageResults...)
-							// Check if the next page button exists and extract its href
-							jsCheckNextPage := `
-									(() => {
-											const nextPageBtn = document.querySelector('#page-header-controls > ul > li > a');
-											return nextPageBtn ? nextPageBtn.href : "";
-									})();
-							`
-							if err := chromedp.Evaluate(jsCheckNextPage, &nextPageHref).Do(ctx); err != nil {
-								return err
-							}
-
-							// If a next page is available, navigate to it and repeat scraping
-							if nextPageHref != "" {
-								nextPageHref = fmt.Sprintf("%s&perpage=80", nextPageHref)
-								err := chromedp.Navigate(nextPageHref).Do(ctx)
-								if err != nil {
-									return err
-								}
-
-								// Wait for the product list grid to be visible
-								if err := chromedp.WaitVisible("#product-list-grid", chromedp.ByID).Do(ctx); err != nil {
-									return err
-								}
-
-								// Recursively scrape the next page
-								return chromedp.ActionFunc(func(ctx context.Context) error {
-									if err := chromedp.Evaluate(jsScrapeProduct, &currentPageResults).Do(ctx); err != nil {
-										return err
-									}
-									categoryProductResults = append(categoryProductResults, currentPageResults...)
-									return nil
-								}).Do(ctx)
-							}
-
-							return nil
-						}),
-					)
-					if err != nil {
-						errCh <- err
-						return
-					}
-					for _, productResult := range categoryProductResults {
-						productCh <- entity.ProductWithCategory{
-							CategoryURL: url,
-							Product: entity.Product{
-								ProductID:  ExtractProductId(productResult.Href),
-								ProductURL: productResult.Href,
-							},
-						}
-					}
-				}(productUrl)
-			}
-		}()
-
-		retryWg.Wait()
-	}()
+	wg.Add(1)
+	go scrapingcontroller.ScrapeCategories(categoryCh, errCh, &wg)
+	//Scrape ListProducts from Categories
+	wg.Add(1)
+	go scrapingcontroller.ScrapeListProducts(categoryCh, productCh, errCh, &wg)
 	// Scrape Product Details
+	var (
+		mu                  sync.Mutex
+		allCategoryProducts []entity.CategoryProducts
+		categoryProductsMap = make(map[string]map[string]entity.Product)
+		categoryNamesMap    = make(map[string]string)
+	)
+	wg.Add(1)
 	go func() {
-		var (
-			wg                  sync.WaitGroup
-			retryWg             sync.WaitGroup
-			mu                  sync.Mutex
-			allCategoryProducts []entity.CategoryProducts
-			categoryProductsMap = make(map[string]map[string]entity.Product)
-			categoryNamesMap    = make(map[string]string)
-		)
-		// scrape page productDetail
-		for productCategory := range productCh {
+		defer func() {
+			wg.Done()
+		}()
+		for prod := range productCh {
 			wg.Add(1)
-			go func(productCategory entity.ProductWithCategory) {
-				defer wg.Done()
-				productDetailPool <- struct{}{}
-				defer func() { <-productDetailPool }()
-
+			go func(prod entity.ProductWithCategory) {
 				productDetailCtx, cancel := chromedp.NewContext(browserCtx)
-				defer cancel()
+				defer func() {
+					cancel()
+					wg.Done()
+				}()
 
-				productUrl := productCategory.Product.ProductURL
+				productUrl := prod.Product.ProductURL
 				if strings.Contains(productUrl, ".ecrater.com") {
-					pos := strings.Index(productUrl, ".ecrater.com")
-					if pos != -1 {
+					if pos := strings.Index(productUrl, ".ecrater.com"); pos != -1 {
 						productUrl = "https://www.ecrater.com" + productUrl[pos+len(".ecrater.com"):]
 					}
 				}
@@ -454,16 +139,14 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 					network.SetExtraHTTPHeaders(network.Headers(headers)),
 					chromedp.Navigate(productUrl),
 					chromedp.ActionFunc(func(ctx context.Context) error {
-						checkService := `
-							(() => document.querySelector('h1')?.textContent.trim())()
-						`
+						checkService := `(() => document.querySelector('h1')?.textContent.trim())()`
 						var pageTitle string
 						if err := chromedp.Evaluate(checkService, &pageTitle).Do(ctx); err != nil {
 							return err
 						}
 						if pageTitle == "Service Temporarily Unavailable" {
 							retryProductDetailCh <- entity.ProductWithCategory{
-								CategoryURL: productCategory.CategoryURL,
+								CategoryURL: prod.CategoryURL,
 								Product: entity.Product{
 									ProductID:  ExtractProductId(productUrl),
 									ProductURL: productUrl,
@@ -471,64 +154,26 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 							}
 							return nil
 						}
-
 						js := `
 							(() => {
-									const details = document.querySelector('#product-quantity');
-									const titleElement = document.querySelector('#product-title h1');
-
-									const title = titleElement ?
-											Array.from(titleElement.childNodes)
-													.filter(node => node.nodeType === Node.TEXT_NODE)
-													.map(node => node.textContent.trim())
-													.join(' ')
-													.replace(/\s+/g, ' ')
-													.trim()
-											: '';
-
-									const priceRaw = document.querySelector('#price')?.textContent.trim();
-
-									const sold = details ?
-											parseInt(details.querySelector('b')?.textContent.trim() || '0', 10)
-											: 0;
-
-									// Pastikan details ada sebelum mengakses available
-									const available = details ?
-											details.textContent.split(',')[0]?.trim()
-											: '';
-
-									return { title, available, sold, price: priceRaw };
+								const details = document.querySelector('#product-quantity');
+								const titleElement = document.querySelector('#product-title h1');
+								const title = titleElement ?
+									Array.from(titleElement.childNodes)
+										.filter(node => node.nodeType === Node.TEXT_NODE)
+										.map(node => node.textContent.trim())
+										.join(' ')
+										.replace(/\s+/g, ' ')
+										.trim() : '';
+								const priceRaw = document.querySelector('#price')?.textContent.trim();
+								const sold = details ? 
+									parseInt(details.querySelector('b')?.textContent.trim() || '0', 10) : 0;
+								const available = details ? details.textContent.split(',')[0]?.trim() : '';
+								return { title, available, sold, price: priceRaw };
 							})()
-							`
-
-						err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
-						if err != nil {
+						`
+						if err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx); err != nil {
 							return err
-						}
-						mu.Lock()
-						defer mu.Unlock()
-						categoryUrl := productCategory.CategoryURL
-						categoryID := ExtractCategoryId(categoryUrl)
-						categoryName := ExtractCategoryName(categoryUrl)
-
-						if _, exists := categoryNamesMap[categoryID]; !exists {
-							categoryNamesMap[categoryID] = categoryName
-						}
-
-						if _, exists := categoryProductsMap[categoryID]; !exists {
-							categoryProductsMap[categoryID] = make(map[string]entity.Product)
-						}
-
-						productID := ExtractProductId(productUrl)
-						if _, exists := categoryProductsMap[categoryID][productID]; !exists {
-							categoryProductsMap[categoryID][productID] = entity.Product{
-								ProductID:    productID,
-								ProductTitle: productDetailsResults.Title,
-								ProductURL:   productUrl,
-								ProductStock: productDetailsResults.Available,
-								ProductPrice: productDetailsResults.Price,
-								ProductSold:  productDetailsResults.Sold,
-							}
 						}
 						return nil
 					}),
@@ -537,28 +182,48 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 					errCh <- err
 					return
 				}
-			}(productCategory)
-		}
-		// Goroutine for retry productDetail
-		go func() {
-			for productUrl := range retryProductDetailCh {
-				retryWg.Add(1)
-				go func(productCategory entity.ProductWithCategory) {
-					defer retryWg.Done()
-					retryPool <- struct{}{}
-					defer func() { <-retryPool }()
 
+				mu.Lock()
+				categoryUrl := prod.CategoryURL
+				categoryID := ExtractCategoryId(categoryUrl)
+				categoryName := ExtractCategoryName(categoryUrl)
+				if _, exists := categoryNamesMap[categoryID]; !exists {
+					categoryNamesMap[categoryID] = categoryName
+				}
+				if _, exists := categoryProductsMap[categoryID]; !exists {
+					categoryProductsMap[categoryID] = make(map[string]entity.Product)
+				}
+				productID := ExtractProductId(productUrl)
+				if _, exists := categoryProductsMap[categoryID][productID]; !exists {
+					categoryProductsMap[categoryID][productID] = entity.Product{
+						ProductID:    productID,
+						ProductTitle: productDetailsResults.Title,
+						ProductURL:   productUrl,
+						ProductStock: productDetailsResults.Available,
+						ProductPrice: productDetailsResults.Price,
+						ProductSold:  productDetailsResults.Sold,
+					}
+				}
+				mu.Unlock()
+			}(prod)
+		}
+		go func() {
+			for retryProd := range retryProductDetailCh {
+				wg.Add(1)
+				go func(prod entity.ProductWithCategory) {
+					retryCtx, cancel := chromedp.NewContext(browserCtx)
+					productUrl := prod.Product.ProductURL
+					defer func() {
+						cancel()
+						wg.Done()
+					}()
 					var productDetailsResults struct {
 						Title     string `json:"title"`
 						Available string `json:"available"`
 						Sold      int    `json:"sold"`
 						Price     string `json:"price"`
 					}
-					productUrl := productCategory.Product.ProductURL
-					retryErrProductCtx, cancel := chromedp.NewContext(browserCtx)
-					defer cancel()
-
-					err := chromedp.Run(retryErrProductCtx,
+					err := chromedp.Run(retryCtx,
 						network.SetCacheDisabled(false),
 						network.SetBlockedURLS([]string{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.css", "*.js"}),
 						network.Enable(),
@@ -566,131 +231,113 @@ func (scrapingcontroller *ScrapingController) ScrapeAllSellerProducts(seller str
 						chromedp.Navigate(productUrl),
 						chromedp.ActionFunc(func(ctx context.Context) error {
 							js := `
-							(() => {
-									const details = document.querySelector('#product-quantity');
-									const titleElement = document.querySelector('#product-title h1');
-
-									const title = titleElement ?
+									(() => {
+										const details = document.querySelector('#product-quantity');
+										const titleElement = document.querySelector('#product-title h1');
+										const title = titleElement ?
 											Array.from(titleElement.childNodes)
-													.filter(node => node.nodeType === Node.TEXT_NODE)
-													.map(node => node.textContent.trim())
-													.join(' ')
-													.replace(/\s+/g, ' ')
-													.trim()
-											: '';
-
-									const priceRaw = document.querySelector('#price')?.textContent.trim();
-
-									const sold = details ?
-											parseInt(details.querySelector('b')?.textContent.trim() || '0', 10)
-											: 0;
-
-									// Pastikan details ada sebelum mengakses available
-									const available = details ?
-											details.textContent.split(',')[0]?.trim()
-											: '';
-
-									return { title, available, sold, price: priceRaw };
-							})()
-							`
-
-							err := chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
-							if err != nil {
-								return err
-							}
-							mu.Lock()
-							defer mu.Unlock()
-							categoryUrl := productCategory.CategoryURL
-							categoryID := ExtractCategoryId(categoryUrl)
-							categoryName := ExtractCategoryName(categoryUrl)
-
-							if _, exists := categoryNamesMap[categoryID]; !exists {
-								categoryNamesMap[categoryID] = categoryName
-							}
-
-							if _, exists := categoryProductsMap[categoryID]; !exists {
-								categoryProductsMap[categoryID] = make(map[string]entity.Product)
-							}
-
-							productID := ExtractProductId(productUrl)
-							if _, exists := categoryProductsMap[categoryID][productID]; !exists {
-								categoryProductsMap[categoryID][productID] = entity.Product{
-									ProductID:    productID,
-									ProductTitle: productDetailsResults.Title,
-									ProductURL:   productUrl,
-									ProductStock: productDetailsResults.Available,
-									ProductPrice: productDetailsResults.Price,
-									ProductSold:  productDetailsResults.Sold,
-								}
-							}
-
-							return nil
+												.filter(node => node.nodeType === Node.TEXT_NODE)
+												.map(node => node.textContent.trim())
+												.join(' ')
+												.replace(/\s+/g, ' ')
+												.trim() : '';
+										const priceRaw = document.querySelector('#price')?.textContent.trim();
+										const sold = details ? 
+											parseInt(details.querySelector('b')?.textContent.trim() || '0', 10) : 0;
+										const available = details ? details.textContent.split(',')[0]?.trim() : '';
+										return { title, available, sold, price: priceRaw };
+									})()
+								`
+							return chromedp.Evaluate(js, &productDetailsResults).Do(ctx)
 						}),
 					)
 					if err != nil {
 						errCh <- err
 						return
 					}
-				}(productUrl)
+
+					if productDetailsResults.Sold == 0 {
+						return
+					}
+
+					mu.Lock()
+					categoryUrl := prod.CategoryURL
+					categoryID := ExtractCategoryId(categoryUrl)
+					categoryName := ExtractCategoryName(categoryUrl)
+					if _, exists := categoryNamesMap[categoryID]; !exists {
+						categoryNamesMap[categoryID] = categoryName
+					}
+					if _, exists := categoryProductsMap[categoryID]; !exists {
+						categoryProductsMap[categoryID] = make(map[string]entity.Product)
+					}
+					productID := ExtractProductId(productUrl)
+					if _, exists := categoryProductsMap[categoryID][productID]; !exists {
+						categoryProductsMap[categoryID][productID] = entity.Product{
+							ProductID:    productID,
+							ProductTitle: productDetailsResults.Title,
+							ProductURL:   productUrl,
+							ProductStock: productDetailsResults.Available,
+							ProductPrice: productDetailsResults.Price,
+							ProductSold:  productDetailsResults.Sold,
+						}
+					}
+					mu.Unlock()
+				}(retryProd)
 			}
 		}()
-
-		// wait for all goroutine
-		wg.Wait()
-		retryWg.Wait()
-		// close ctx, channel and pool
-
-		// Arrange data, sort, and save it to a slice
-		var totalItemsSold, totalProductsSold int
-
-		for categoryID, productMap := range categoryProductsMap {
-			uniqueProducts := make(map[string]entity.Product)
-
-			for _, product := range productMap {
-				uniqueProducts[product.ProductID] = product
-			}
-
-			var products []entity.Product
-			var itemsSold, productsSoldCount int
-
-			for _, product := range uniqueProducts {
-				products = append(products, product)
-				itemsSold += product.ProductSold
-				if product.ProductSold > 0 {
-					productsSoldCount++
-				}
-			}
-
-			if len(products) > 0 {
-				sort.Slice(products, func(i, j int) bool {
-					return products[i].ProductSold > products[j].ProductSold
-				})
-			}
-
-			categoryName := categoryNamesMap[categoryID]
-			allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
-				CategoryName:      categoryName,
-				CategoryID:        categoryID,
-				Products:          products,
-				ItemsSold:         itemsSold,
-				ProductsSoldCount: productsSoldCount,
-			})
-
-			totalItemsSold += itemsSold
-			totalProductsSold += productsSoldCount
-		}
-
-		responseData := &response.SellerProductResponse{
-			Categories:        allCategoryProducts,
-			ItemsSold:         totalItemsSold,
-			ProductsSoldCount: totalProductsSold,
-		}
-
-		message := "responseSuccess"
-		scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
 	}()
 
-	<-done
+	// wait for all goroutine to finish
+	wg.Wait()
+	close(errCh)
+	close(retryProductDetailCh)
+	cancelBrowser()
+	// Arrange data, sort, and save it to a slice
+	var totalItemsSold, totalProductsSold int
+	for categoryID, productMap := range categoryProductsMap {
+		uniqueProducts := make(map[string]entity.Product)
+
+		for _, product := range productMap {
+			uniqueProducts[product.ProductID] = product
+		}
+
+		var products []entity.Product
+		var itemsSold, productsSoldCount int
+
+		for _, product := range uniqueProducts {
+			products = append(products, product)
+			itemsSold += product.ProductSold
+			if product.ProductSold > 0 {
+				productsSoldCount++
+			}
+		}
+
+		if len(products) > 0 {
+			sort.Slice(products, func(i, j int) bool {
+				return products[i].ProductSold > products[j].ProductSold
+			})
+		}
+
+		categoryName := categoryNamesMap[categoryID]
+		allCategoryProducts = append(allCategoryProducts, entity.CategoryProducts{
+			CategoryName:      categoryName,
+			CategoryID:        categoryID,
+			Products:          products,
+			ItemsSold:         itemsSold,
+			ProductsSoldCount: productsSoldCount,
+		})
+
+		totalItemsSold += itemsSold
+		totalProductsSold += productsSoldCount
+	}
+
+	responseData := &response.SellerProductResponse{
+		Categories:        allCategoryProducts,
+		ItemsSold:         totalItemsSold,
+		ProductsSoldCount: totalProductsSold,
+	}
+	message := "responseSuccess"
+	scrapingcontroller.Producer.PublishScrapingData(message, scrapingcontroller.Rabbitmq.Channel, responseData)
 }
 func (scrapingcontroller *ScrapingController) ScrapeSoldSellerProducts(seller string) {
 	// Headers for scraping request

@@ -8,11 +8,12 @@ import (
 )
 
 type ScrapingControllerConsumer struct {
+	Env        *config.EnvConfig
 	Controller *controllers.ScrapingController
 }
 
 func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageAllSellerProduct(rabbitMQConfig *config.RabbitMqConfig) {
-	expectedQueueName := "GetAllSellerProductQueue"
+	expectedQueueName := scrapingControllerConsumer.Env.RabbitMq.Queues[1]
 	var queueName string
 	for _, name := range rabbitMQConfig.Queue {
 		if expectedQueueName == name.Name {
@@ -46,7 +47,7 @@ func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageAllS
 	log.Println("Message channel closed, attempting to reconnect...")
 }
 func (scrapingControllerConsumer *ScrapingControllerConsumer) ConsumeMessageSoldSellerProduct(rabbitMQConfig *config.RabbitMqConfig) {
-	expectedQueueName := "GetSoldSellerProductQueue"
+	expectedQueueName := scrapingControllerConsumer.Env.RabbitMq.Queues[2]
 	var queueName string
 	for _, name := range rabbitMQConfig.Queue {
 		if expectedQueueName == name.Name {
