@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -10,7 +10,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
 
       - name: Create .env file
         run: |
@@ -28,11 +27,10 @@ jobs:
           RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}
           RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}
           RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}
-          RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }}
+          RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}
           RABBITMQ_MANAGEMENT_PORT=${{ secrets.RABBITMQ_MANAGEMENT_PORT }}
           RABBITMQ_QUEUE_NAMES=${{ secrets.RABBITMQ_QUEUE_NAMES }}
           EOF
-
 
       - name: Login to DockerHub
         env:
